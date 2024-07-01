@@ -18,17 +18,18 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
 
  * C:E********************************************************************** */
 #pragma once
-#include <vector>
 #include <string>
-#include "DtaConstants.h"
-#include "DtaStructures.h"
+#include <stdlib.h>
+#include "DtaDev.h"
 
 /** virtual implementation for a disk interface-generic disk drive
  */
 class DtaDevOSDrive {
 public:
 
-    DtaDevOSDrive() {};
+    DtaDevOSDrive(OSDEVICEHANDLE _osDeviceHandle)
+    : osDeviceHandle(_osDeviceHandle)
+    {};
 
     // The next two functions must be implemented in an OS-specific build
     // as pass-throughs since C++ does not have virtual static class functions.
@@ -40,14 +41,13 @@ public:
    *
    * @param devref OS device reference e.g. "/dev/sda" on a POSIX-style system
    */
-
-  static bool isDtaDevOSDriveDevRef(const char * devref);
+  static bool isDtaDevOSDriveDevRef(const char * devref, bool& accessDenied);
 
   /** Factory function to enumerate all the devrefs that pass the above filter
    *
    */
   static
-  std::vector<std::string> enumerateDtaDevOSDriveDevRefs(void);
+  std::vector<std::string> enumerateDtaDevOSDriveDevRefs(bool & accessDenied);
 
   /** Factory function to look at the devref and create an instance of the appropriate subclass of
    *  DtaDevOSDrive
@@ -56,7 +56,8 @@ public:
    * @param disk_info reference to DTA_DEVICE_INFO structure filled out during device identification
    */
   static DtaDevOSDrive * getDtaDevOSDrive(const char * devref,
-                                          DTA_DEVICE_INFO & disk_info);
+                                          DTA_DEVICE_INFO & disk_info,
+                                          bool& accessDenied);
 
 
   /** Method to send a command to the device
@@ -77,25 +78,44 @@ public:
    * to fill out the disk_info structure
    * @param disk_info reference to the device info structure to fill out
    */
-    virtual bool identify(DTA_DEVICE_INFO& disk_info) = 0;
+  virtual bool identify(DTA_DEVICE_INFO& disk_info) = 0;
 
 
-    
-  virtual uint8_t discovery0(DTA_DEVICE_INFO & di);
 
-  virtual bool isOpen(void) = 0 ;
+  virtual uint8_t discovery0(DTA_DEVICE_INFO & di) = 0;
 
-  virtual ~DtaDevOSDrive() {};
+
+  virtual ~DtaDevOSDrive() {closeDrive();}
+
+  static OSDEVICEHANDLE openDeviceHandle(const char* devref, bool& accessDenied);
+
+  static void closeDeviceHandle(OSDEVICEHANDLE osDeviceHandle);
+
+  virtual bool isOpen(void) { return ( osDeviceHandle != INVALID_HANDLE_VALUE ) ;}
+
+protected:
+  using base_type = DtaDevOSDrive;
+
+  static OSDEVICEHANDLE openAndCheckDeviceHandle(const char* devref, bool& accessDenied);
+
+  void closeDrive(void){
+    if (isOpen()) {
+      closeDeviceHandle(osDeviceHandle);
+      osDeviceHandle = INVALID_HANDLE_VALUE;
+    }
+  }
+
+public:  // *** TODO *** DEBUGGING *** this should just be protected
+    OSDEVICEHANDLE osDeviceHandle = INVALID_HANDLE_VALUE;
+
 };
-
 
 
 
 template <typename T>
 static inline void safecopy(T * dst, size_t dstsize, const T * src, size_t srcsize, const T fill = (T)(0))
 {
-  const T *p=src, *p_end=p+srcsize;
-  while ((T)(0)==(*p)) if (p_end==++p) return;  // Do not erase dst if src is all zeros
+  if (__is_all_NULs(src,srcsize)) return;  // Do not erase dst if src is all zeros
 
   if (dstsize<=srcsize)
     memcpy(dst,src,dstsize);
@@ -105,9 +125,22 @@ static inline void safecopy(T * dst, size_t dstsize, const T * src, size_t srcsi
   }
 }
 
-static inline void * alloc_aligned_MIN_BUFFER_LENGTH_buffer () {
-  return aligned_alloc( IO_BUFFER_ALIGNMENT,
-                        (((MIN_BUFFER_LENGTH + IO_BUFFER_ALIGNMENT - 1)
-                          / IO_BUFFER_ALIGNMENT)
-                         * IO_BUFFER_ALIGNMENT) );
+
+
+template <typename T>
+static inline void softcopy(T * dst, size_t dstsize, const T * src, size_t srcsize, const T fill = (T)(0))
+{
+  if (__is_all_NULs(src,srcsize)) return;  // Do not erase dst if src is all zeros
+
+  T * p = dst, * e = dst+dstsize;
+  while (p<e && ((T)' ')==(*p)) p++;     // Skip all initial blanks
+  while (p<e && ((T) 0 )==(*p)) p++;     // Skip all subsequent NULs
+  if (p!=e) return;                      // Do not replace dst if it was non-empty, i.e. not just maybe some blanks followed by NULs
+
+  if (dstsize<=srcsize)
+    memcpy(dst,src,dstsize);
+  else {
+    memcpy(dst,src,srcsize);
+    memset(dst+srcsize, fill, dstsize-srcsize);
+  }
 }

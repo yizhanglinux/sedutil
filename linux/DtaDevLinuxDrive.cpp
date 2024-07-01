@@ -18,65 +18,169 @@
 
    * C:E********************************************************************** */
 
-#include <cstdint>
-#include <cstring>
 #include <algorithm>
 #include "dirent.h"
-#include "os.h"
-#include "DtaEndianFixup.h"
-#include "DtaHexDump.h"
+
+#include "DtaDevOSDrive.h"
 #include "DtaDevLinuxDrive.h"
+#include "DtaDevLinuxNvme.h"
+#include "DtaDevLinuxScsi.h"
+#include "ParseDiscovery0Features.h"
 
 
-int DtaDevLinuxDrive::fdopen(const char * devref)
+/** Factory functions
+ *
+ * Static class members of DtaDevOSDrive that are passed through
+ * to DtaDevLinuxDrive
+ *
+ */
+
+bool DtaDevOSDrive::isDtaDevOSDriveDevRef(const char * devref, bool & accessDenied) {
+  // LOG(E) << "In isDtaDevOSDriveDevRef: devref=\""<< devref << "\"" ;        // TODO: debugging
+  bool result = DtaDevLinuxDrive::isDtaDevLinuxDriveDevRef(devref);
+  // LOG(E) << "result = DtaDevLinuxDrive::isDtaDevLinuxDriveDevRef(\""
+  //        << devref << "\") = " << std::boolalpha << result;                 // TODO: debugging
+  if (result) {
+    OSDEVICEHANDLE osDeviceHandle = openDeviceHandle(devref, accessDenied);
+    // LOG(E) << "In isDtaDevOSDriveDevRef: OSDEVICEHANDLE osDeviceHandle = " << HEXON(16) << osDeviceHandle
+    //        << " = openDeviceHandle(\"" << devref << "\", "
+    //                             << std::boolalpha << accessDenied << ")";  // TODO: debugging
+    result = (osDeviceHandle!=INVALID_HANDLE_VALUE && !accessDenied);
+    // LOG(E) << "result = " << std::boolalpha << result;                     // TODO: debugging
+    if (osDeviceHandle!=INVALID_HANDLE_VALUE) closeDeviceHandle(osDeviceHandle);
+  }
+  return result;
+}
+
+std::vector<std::string> DtaDevOSDrive::enumerateDtaDevOSDriveDevRefs(bool & accessDenied) {
+    return DtaDevLinuxDrive::enumerateDtaDevLinuxDriveDevRefs(accessDenied);
+}
+
+DtaDevOSDrive * DtaDevOSDrive::getDtaDevOSDrive(const char * devref,
+                                                DTA_DEVICE_INFO &device_info,
+                                                bool& accessDenied)
 {
+  return static_cast<DtaDevOSDrive *>(DtaDevLinuxDrive::getDtaDevLinuxDrive(devref, device_info, accessDenied));
+}
+
+
+OSDEVICEHANDLE DtaDevOSDrive::openDeviceHandle(const char* devref, bool& accessDenied) {
+  return DtaDevLinuxDrive::openDeviceHandle(devref, accessDenied);
+}
+
+void DtaDevOSDrive::closeDeviceHandle(OSDEVICEHANDLE osDeviceHandle) {
+  DtaDevLinuxDrive::closeDeviceHandle(osDeviceHandle);
+}
+
+
+
+bool DtaDevLinuxDrive::isDtaDevLinuxDriveDevRef(const char * devref)
+{
+  return DtaDevLinuxNvme::isDtaDevLinuxNvmeDevRef(devref)
+    ||   DtaDevLinuxScsi::isDtaDevLinuxScsiDevRef(devref) ;
+}
+
+
+OSDEVICEHANDLE DtaDevLinuxDrive::openAndCheckDeviceHandle(const char * devref, bool& accessDenied)
+{
+  if (isDtaDevLinuxDriveDevRef(devref)) {
+    return INVALID_HANDLE_VALUE;
+  }
+
   if (access(devref, R_OK | W_OK)) {
-    LOG(E) << "You do not have permission to access the raw device in write mode";
-    LOG(E) << "Perhaps you might try sudo to run as root";
+    accessDenied = true;
+    return INVALID_HANDLE_VALUE;
   }
 
-  int fd = open(devref, O_RDWR);
+  accessDenied = false;
+  OSDEVICEHANDLE osDeviceHandle = openDeviceHandle(devref, accessDenied);
 
-  if (fd < 0) {
-    LOG(E) << "Error opening device " << devref << " " << (int32_t) fd;
-    //        if (-EPERM == fd) {
-    //            LOG(E) << "You do not have permission to access the raw disk in write mode";
-    //            LOG(E) << "Perhaps you might try sudo to run as root";
-    //        }
+  if (accessDenied) {
+    return INVALID_HANDLE_VALUE;
   }
-  return fd;
+
+  int32_t descriptor = handleDescriptor(osDeviceHandle);
+  if (descriptor < 0) {
+    LOG(E) << "Error "  << (int32_t) descriptor << " opening device " << devref;
+    if (-EPERM == descriptor) {
+      LOG(E)  << "(From DtaDevLinuxDrive::openAndCheckDeviceHandle:)" ;
+      LOG(E)  << "You do not have permission to access the raw device " << devref << " in write mode" ;
+      LOG(E)  << "Perhaps you might try to run as administrator" ;
+      accessDenied = true;
+    }
+    return INVALID_HANDLE_VALUE;
+  }
+
+  return osDeviceHandle;
 }
 
-void DtaDevLinuxDrive::fdclose()
-{
-  if (0 <= fd) {
-    LOG(D4) << "Closing device file handle " << (int32_t) fd;
-    close(fd);
+
+OSDEVICEHANDLE DtaDevLinuxDrive::openDeviceHandle(const char* devref, bool & accessDenied) {
+  int descriptor=open(devref, O_RDWR);
+
+  if (descriptor == -1) {
+    switch (errno) {
+    case EACCES:
+      accessDenied = true;
+      break;
+    case ENOENT:
+      LOG(E) << "No such device: " << devref;
+      break;
+    default:
+      LOG(E) << "Failed opening " << devref << " : " << strerror(errno) ;
+      break;
+    }
+    return INVALID_HANDLE_VALUE;
   }
+
+  return handle(descriptor);
 }
 
-using namespace std;
-vector<string> DtaDevLinuxDrive::enumerateDtaDevLinuxDriveDevRefs()
+void DtaDevLinuxDrive::closeDeviceHandle(OSDEVICEHANDLE osDeviceHandle) {
+  close(handleDescriptor(osDeviceHandle));
+}
+
+std::vector<std::string> DtaDevLinuxDrive::enumerateDtaDevLinuxDriveDevRefs(bool & accessDenied)
 {
-  vector<string> devices;
+    std::vector<std::string> devrefs;
 
   DIR *dir = opendir("/dev");
   if (dir==NULL) {
     LOG(E) << "Can't read /dev ?!";
-    return devices;
+    return devrefs;
   }
 
   struct dirent *dirent;
   while (NULL != (dirent=readdir(dir))) {
-    char devref[261];
-    snprintf(devref,sizeof(devref),"/dev/%s",dirent->d_name);
-    if (isDtaDevOSDriveDevRef(devref))
-      devices.push_back(string(devref));
+    std::string str_devref=std::string("/dev/")+dirent->d_name;
+    const char * devref=str_devref.c_str();
+    bool accessDeniedThisTime=false;
+    if (isDtaDevOSDriveDevRef(devref, accessDeniedThisTime))
+      devrefs.push_back(str_devref);
+    else if (accessDeniedThisTime) {
+      accessDenied=true;
+    }
   }
 
   closedir(dir);
 
-  std::sort(devices.begin(),devices.end());
+  std::sort(devrefs.begin(),devrefs.end());
 
-  return devices;
+  return devrefs;
+}
+
+uint8_t DtaDevLinuxDrive::discovery0(DTA_DEVICE_INFO & disk_info) {
+  void * d0Response = alloc_aligned_MIN_BUFFER_LENGTH_buffer();
+  if (d0Response == NULL)
+      return DTAERROR_COMMAND_ERROR;
+  memset(d0Response, 0, MIN_BUFFER_LENGTH);
+
+  int lastRC = sendCmd(IF_RECV, 0x01, 0x0001, d0Response, MIN_BUFFER_LENGTH);
+  if ((lastRC ) != 0) {
+    LOG(D4) << "Acquiring Discovery 0 response failed " << lastRC;
+    return DTAERROR_COMMAND_ERROR;
+  }
+  parseDiscovery0Features((uint8_t *)d0Response, disk_info);
+  free_aligned_MIN_BUFFER_LENGTH_buffer(d0Response);
+  return DTAERROR_SUCCESS;
 }

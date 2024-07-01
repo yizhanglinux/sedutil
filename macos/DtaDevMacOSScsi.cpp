@@ -46,10 +46,38 @@
 #include "DtaDevMacOSScsi.h"
 #include "DtaHexDump.h"
 
-bool DtaDevMacOSScsi::identifyUsingSCSIInquiry(io_connect_t connection,
+
+DtaDevMacOSScsi *
+DtaDevMacOSScsi::getDtaDevMacOSScsi(const char * devref, DTA_DEVICE_INFO & device_info) {
+
+  bool accessDenied=false;
+  OSDEVICEHANDLE osDeviceHandle = openAndCheckDeviceHandle(devref, accessDenied);
+  if (osDeviceHandle==INVALID_HANDLE_VALUE || accessDenied)
+    return NULL;
+
+  LOG(D4) << "Success opening device " << devref << " as file handle " << HEXON(4) << (size_t) osDeviceHandle;
+
+
+  InterfaceDeviceID interfaceDeviceIdentification;
+
+  // In theory every USB device should respond to Scsi commands, in particularly Inquiry.  Is this true?
+  if (! identifyUsingSCSIInquiry(osDeviceHandle, interfaceDeviceIdentification, device_info)) {
+    device_info.devType = DEVICE_TYPE_OTHER;
+    LOG(E) << " Device " << devref << " is NOT Scsi?! -- file handle " << HEXON(2) << (size_t) osDeviceHandle;
+    closeDeviceHandle(osDeviceHandle);
+    return NULL;
+  }
+
+  return new DtaDevMacOSScsi(osDeviceHandle);
+}
+
+
+
+
+bool DtaDevMacOSScsi::identifyUsingSCSIInquiry(OSDEVICEHANDLE osDeviceHandle,
                                                InterfaceDeviceID & interfaceDeviceIdentification,
                                                DTA_DEVICE_INFO & disk_info) {
-  if (!deviceIsStandardSCSI(connection, interfaceDeviceIdentification, disk_info)) {
+  if (!deviceIsStandardSCSI(osDeviceHandle, interfaceDeviceIdentification, disk_info)) {
     LOG(E) << " Device is not Standard SCSI -- not for this driver";
     return false;
   }
@@ -143,7 +171,7 @@ bool DtaDevMacOSScsi::identifyUsingSCSIInquiry(io_connect_t connection,
 
 
 
-bool DtaDevMacOSScsi::deviceIsStandardSCSI(io_connect_t connection, InterfaceDeviceID & interfaceDeviceIdentification, DTA_DEVICE_INFO &di)
+bool DtaDevMacOSScsi::deviceIsStandardSCSI(OSDEVICEHANDLE osDeviceHandle, InterfaceDeviceID & interfaceDeviceIdentification, DTA_DEVICE_INFO &di)
 {
   // Test whether device is a SCSI drive by attempting
   // SCSI Inquiry command
@@ -153,8 +181,8 @@ bool DtaDevMacOSScsi::deviceIsStandardSCSI(io_connect_t connection, InterfaceDev
   unsigned int transferSize = sizeof(CScsiCmdInquiry_StandardData);
     void * inquiryResponse =  alloc_aligned_MIN_BUFFER_LENGTH_buffer();
   if ( inquiryResponse != NULL ) {
-    bzero ( inquiryResponse, MIN_BUFFER_LENGTH );
-    isStandardSCSI = ( 0 == inquiryStandardDataAll_SCSI(connection, inquiryResponse, transferSize ) );
+    memset(inquiryResponse, 0, MIN_BUFFER_LENGTH );
+    isStandardSCSI = ( 0 == inquiryStandardDataAll_SCSI(osDeviceHandle, inquiryResponse, transferSize ) );
     if (isStandardSCSI) {
       dictionary * inquiryCharacteristics =
         parseInquiryStandardDataAllResponse(static_cast <const unsigned char * >(inquiryResponse),
@@ -177,14 +205,14 @@ bool DtaDevMacOSScsi::deviceIsStandardSCSI(io_connect_t connection, InterfaceDev
   return isStandardSCSI;
 }
 
-int DtaDevMacOSScsi::inquiryStandardDataAll_SCSI(io_connect_t connection, void * inquiryResponse, unsigned int & dataSize )
+int DtaDevMacOSScsi::inquiryStandardDataAll_SCSI(OSDEVICEHANDLE osDeviceHandle, void * inquiryResponse, unsigned int & dataSize )
 {
-  return __inquiry(connection, 0x00, 0x00, inquiryResponse, dataSize);
+  return __inquiry(osDeviceHandle, 0x00, 0x00, inquiryResponse, dataSize);
 }
 
 
 
-int DtaDevMacOSScsi::__inquiry(io_connect_t connection, uint8_t evpd, uint8_t page_code, void * inquiryResponse, unsigned int & dataSize)
+int DtaDevMacOSScsi::__inquiry(OSDEVICEHANDLE osDeviceHandle, uint8_t evpd, uint8_t page_code, void * inquiryResponse, unsigned int & dataSize)
 {
   static CScsiCmdInquiry cdb =
     { CScsiCmdInquiry::OPCODE , // m_Opcode
@@ -201,7 +229,7 @@ int DtaDevMacOSScsi::__inquiry(io_connect_t connection, uint8_t evpd, uint8_t pa
   unsigned char sense[32];
   unsigned char senselen=sizeof(sense);
   unsigned char masked_status;
-  return PerformSCSICommand(connection,
+  return PerformSCSICommand(osDeviceHandle,
                             PSC_FROM_DEV,
                             (uint8_t *)&cdb, sizeof(cdb),
                             inquiryResponse, dataSize,
@@ -212,26 +240,26 @@ int DtaDevMacOSScsi::__inquiry(io_connect_t connection, uint8_t evpd, uint8_t pa
 dictionary *
 DtaDevMacOSScsi::parseInquiryStandardDataAllResponse(const unsigned char * response,
                                                      InterfaceDeviceID & interfaceDeviceIdentification,
-                                                     DTA_DEVICE_INFO & di)
+                                                     DTA_DEVICE_INFO & device_info)
 {
   const CScsiCmdInquiry_StandardData *resp = reinterpret_cast <const CScsiCmdInquiry_StandardData *>(response);
 
   memcpy(interfaceDeviceIdentification, resp->m_T10VendorId, sizeof(InterfaceDeviceID));
 
   // How sad is this?  // *** TODO *** Is this really correct?
-  safecopy(di.serialNum, sizeof(di.serialNum), resp->m_T10VendorId, sizeof(resp->m_T10VendorId));
+  safecopy(device_info.serialNum, sizeof(device_info.serialNum), resp->m_T10VendorId, sizeof(resp->m_T10VendorId));
 
-  safecopy(di.firmwareRev, sizeof(di.firmwareRev), resp->m_ProductRevisionLevel, sizeof(resp->m_ProductRevisionLevel));
-  safecopy(di.modelNum, sizeof(di.modelNum), resp->m_ProductId, sizeof(resp->m_ProductId));
+  safecopy(device_info.firmwareRev, sizeof(device_info.firmwareRev), resp->m_ProductRevisionLevel, sizeof(resp->m_ProductRevisionLevel));
+  safecopy(device_info.modelNum, sizeof(device_info.modelNum), resp->m_ProductId, sizeof(resp->m_ProductId));
 
   // device is apparently a SCSI disk
   return new dictionary
     {
       {"Device Type"       , "SCSI"                       },
-      {"Model Number"      , (const char *)di.modelNum    },
-      {"Firmware Revision" , (const char *)di.firmwareRev },
-      {"Serial Number"     , (const char *)di.serialNum   },
-      // {"Vendor ID"         , (const char *)di.vendorID    },
+      {"Vendor ID"         , (const char *)device_info.vendorID    },
+      {"Model Number"      , (const char *)device_info.modelNum    },
+      {"Firmware Revision" , (const char *)device_info.firmwareRev },
+      {"Serial Number"     , (const char *)device_info.serialNum   },
     };
 }
 
@@ -250,7 +278,7 @@ uint8_t DtaDevMacOSScsi::sendCmd(ATACOMMAND cmd, uint8_t protocol, uint16_t comI
 
   // initialize SCSI CDB and dxfer_direction
   uint8_t cdb[12];
-  bzero(&cdb, sizeof (cdb));
+  memset(&cdb, 0, sizeof (cdb));
   switch(cmd)
     {
     case IF_RECV:
@@ -289,7 +317,7 @@ uint8_t DtaDevMacOSScsi::sendCmd(ATACOMMAND cmd, uint8_t protocol, uint16_t comI
 
   unsigned char sense[32]; // how big should this be??
   unsigned char senselen=sizeof(sense);
-  bzero(&sense, senselen);
+  memset(&sense, 0, senselen);
 
   unsigned char masked_status=GOOD;
 
@@ -328,21 +356,26 @@ uint8_t DtaDevMacOSScsi::sendCmd(ATACOMMAND cmd, uint8_t protocol, uint16_t comI
 bool DtaDevMacOSScsi::identify(DTA_DEVICE_INFO& disk_info)
 {
   InterfaceDeviceID interfaceDeviceIdentification;
-  return identifyUsingSCSIInquiry(connection, interfaceDeviceIdentification, disk_info);
+  return identifyUsingSCSIInquiry(osDeviceHandle, interfaceDeviceIdentification, disk_info);
 }
 
 
-///** Send a SCSI command using an ioctl to the device. */
-//extern "C"
-//    kern_return_t DriverPerformSCSICommand(io_connect_t connect,
-//                                     SCSICommandDescriptorBlock cdb,
-//                                     const void * buffer,
-//                                     const uint64_t bufferSize,
-//                                     const uint64_t requestedTransferLength,
-//                                     uint64_t *pLengthActuallyTransferred);
+uint8_t DtaDevMacOSScsi::discovery0(DTA_DEVICE_INFO & disk_info) {
+    io_connect_t connect = handleConnection(osDeviceHandle);
+    io_registry_entry_t deviceService = handleDeviceService(osDeviceHandle);
+    if (!IORegistryEntryInPlane(deviceService, "IOService")) {
+        LOG(E) << "deviceService " << deviceService << " " << HEXON(4) << deviceService << " invalid!";
+        return DTAERROR_COMMAND_ERROR;
+    }
+    io_service_t controllerService = findParent(deviceService);
+    return ((connect != IO_OBJECT_NULL && deviceService != IO_OBJECT_NULL &&
+             KERN_SUCCESS == TPerUpdate(connect, controllerService, &disk_info)))
+            ? DTAERROR_SUCCESS
+            : DTAERROR_COMMAND_ERROR;
+}
 
 
-int DtaDevMacOSScsi::PerformSCSICommand(io_connect_t connection,
+int DtaDevMacOSScsi::PerformSCSICommand(OSDEVICEHANDLE osDeviceHandle,
                                         int dxfer_direction,
                                         uint8_t * cdb,   unsigned char cdb_len,
                                         void * buffer,   unsigned int & bufferlen,
@@ -350,7 +383,7 @@ int DtaDevMacOSScsi::PerformSCSICommand(io_connect_t connection,
                                         unsigned char * pmasked_status,
                                         unsigned int timeout)
 {
-  if (connection<=0) {
+  if (osDeviceHandle==INVALID_HANDLE_VALUE) {
     LOG(E) << "Scsi device not open";
     return EBADF;
   }
@@ -368,24 +401,24 @@ int DtaDevMacOSScsi::PerformSCSICommand(io_connect_t connection,
     (void)senselen;
     (void)pmasked_status;
     (void)timeout;
-   
+
 
     SCSICommandDescriptorBlock scdb;
-    bzero(scdb, sizeof(scdb));
+    memset(scdb, 0, sizeof(scdb));
     memcpy(scdb, cdb, cdb_len);
 
     const uint64_t bufferSize = bufferlen;
     const uint64_t requestedTransferLength = bufferlen;
     uint64_t LengthActuallyTransferred=0;
-    kern_return_t kernResult = DriverPerformSCSICommand(connection,
+    kern_return_t kernResult = DriverPerformSCSICommand(handleConnection(osDeviceHandle),
                                                   scdb,
                                                   const_cast<const void *>(buffer),
                                                   bufferSize,
                                                   requestedTransferLength,
                                                   &LengthActuallyTransferred);
-    
-    
-    
+
+
+
     LOG(D4) << "PerformSCSICommand kernResult=" << kernResult ;
     IFLOG(D4) {
       if (kernResult < 0) {
@@ -397,8 +430,7 @@ int DtaDevMacOSScsi::PerformSCSICommand(io_connect_t connection,
       }
     }
     if (kIOReturnSuccess != kernResult) {
-        LOG(E) << "PerformSCSICommand returned error 0x"
-               << std::hex << std::setw(8) << std::setfill('0') << std::uppercase << kernResult;
+//        LOG(E) << "PerformSCSICommand returned error "  << HEXON(8) << kernResult;
         return 0xff;
     } else {
         return 0 ;

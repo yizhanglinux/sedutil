@@ -32,16 +32,77 @@
 #include <errno.h>
 #include <vector>
 #include <fstream>
+#include <iomanip>
 #include "DtaDevLinuxSata.h"
 #include "DtaHexDump.h"
+#include "InterfaceDeviceID.h"
 #include "ParseATIdentify.h"
 
 //
 // taken from <scsi/scsi.h> to avoid SCSI/ATA name collision
 //
 
+DtaDevLinuxSata *
+DtaDevLinuxSata::getDtaDevLinuxSata(const char * devref, DTA_DEVICE_INFO & di) {
+  bool accessDenied=false;
+  OSDEVICEHANDLE osDeviceHandle = openDeviceHandle(devref, accessDenied);
+  if (osDeviceHandle == INVALID_HANDLE_VALUE || accessDenied)
+    return NULL;
 
-bool DtaDevLinuxSata::identifyUsingATAIdentifyDevice(int fd,
+  LOG(D4) << "Success opening device " << devref << " as file handle " << handleDescriptor(osDeviceHandle);
+
+  InterfaceDeviceID interfaceDeviceIdentification;
+  memset(interfaceDeviceIdentification, 0, sizeof(interfaceDeviceIdentification));
+  IFLOG(D4) {
+    LOG(D4) << "Initially";
+    LOG(D4) << "interfaceDeviceIdentification:";
+    DtaHexDump((void *)&interfaceDeviceIdentification, (unsigned int)sizeof(interfaceDeviceIdentification));
+    LOG(D4) << "di:";
+    DtaHexDump((void *)&di, (unsigned int)sizeof(DTA_DEVICE_INFO));
+  }
+
+  if (! identifyUsingSCSIInquiry(osDeviceHandle, interfaceDeviceIdentification, di)) {
+    LOG(E) << " Device " << devref << " is NOT Scsi-passthrough Sata?! -- file handle " << handleDescriptor(osDeviceHandle);
+    LOG(D4) << "Closing device " << devref << " as file handle " << handleDescriptor(osDeviceHandle);
+    di.devType = DEVICE_TYPE_OTHER;
+    closeDeviceHandle(osDeviceHandle);
+    return NULL;
+  }
+
+  IFLOG(D4) {
+    LOG(D4) << "After identifyUsingSCSIInquiry";
+    LOG(D4) << "interfaceDeviceIdentification:";
+    DtaHexDump((void *)&interfaceDeviceIdentification, (unsigned int)sizeof(interfaceDeviceIdentification));
+    LOG(D4) << "di:";
+    DtaHexDump((void *)&di, (unsigned int)sizeof(DTA_DEVICE_INFO));
+  }
+
+
+  dictionary * identifyCharacteristics = NULL;
+  if (identifyUsingATAIdentifyDevice(osDeviceHandle,
+                                     interfaceDeviceIdentification,
+                                     di,
+                                     &identifyCharacteristics)) {
+
+    // The completed identifyCharacteristics map could be useful to customizing code here
+    if ( NULL != identifyCharacteristics ) {
+      LOG(D3) << "identifyCharacteristics for ATA Device: ";
+      for (dictionary::iterator it=identifyCharacteristics->begin(); it!=identifyCharacteristics->end(); it++)
+        LOG(D3) << "  " << it->first << ":" << it->second << std::endl;
+      delete identifyCharacteristics;
+      identifyCharacteristics = NULL ;
+    }
+
+    LOG(D4) << " Device " << devref << " is Sata";
+    di.devType = DEVICE_TYPE_SATA;
+    return new DtaDevLinuxSata(osDeviceHandle);
+  }
+
+  return NULL;
+}
+
+
+bool DtaDevLinuxSata::identifyUsingATAIdentifyDevice(OSDEVICEHANDLE osDeviceHandle,
                                                      InterfaceDeviceID & interfaceDeviceIdentification,
                                                      DTA_DEVICE_INFO & disk_info,
                                                      dictionary ** ppIdentifyCharacteristics) {
@@ -57,11 +118,11 @@ bool DtaDevLinuxSata::identifyUsingATAIdentifyDevice(int fd,
     return false;
   }
 #define IDENTIFY_RESPONSE_SIZE 512
-  bzero ( identifyDeviceResponse, IDENTIFY_RESPONSE_SIZE );
+  memset(identifyDeviceResponse, 0, IDENTIFY_RESPONSE_SIZE );
 
   unsigned int dataLen = IDENTIFY_RESPONSE_SIZE;
-  LOG(D4) << "Invoking identifyDevice_SAT --  dataLen=" << std::hex << "0x" << dataLen ;
-  isSAT = (0 == identifyDevice_SAT( fd, identifyDeviceResponse, dataLen ));
+  LOG(D4) << "Invoking identifyDevice_SAT --  dataLen=" << HEXON(3) << dataLen ;
+  isSAT = (0 == identifyDevice_SAT( osDeviceHandle, identifyDeviceResponse, dataLen ));
 
   if (isSAT) {
     LOG(D4) << " identifyDevice_SAT returned zero -- is SAT" ;
@@ -80,7 +141,7 @@ bool DtaDevLinuxSata::identifyUsingATAIdentifyDevice(int fd,
       LOG(D4) << " *** IDENTIFY DEVICE response checksum not present" ;
     }
     IFLOG(D4) {
-      LOG(D4) << "ATA IDENTIFY DEVICE response: dataLen=" << std::hex << "0x" << dataLen ;
+      LOG(D4) << "ATA IDENTIFY DEVICE response: dataLen=" << HEXON(3) << dataLen ;
       DtaHexDump(identifyDeviceResponse, dataLen);
     }
 
@@ -102,15 +163,15 @@ bool DtaDevLinuxSata::identifyUsingATAIdentifyDevice(int fd,
 
 
 
-int DtaDevLinuxSata::identifyDevice_SAT( int fd, void * buffer , unsigned int & dataLength)
+int DtaDevLinuxSata::identifyDevice_SAT( OSDEVICEHANDLE osDeviceHandle, void * buffer , unsigned int & dataLength)
 {
 
   // LOG(D4) << " identifyDevice_SAT about to PerformATAPassThroughCommand" ;
-  int result=PerformATAPassThroughCommand(fd,
+  int result=PerformATAPassThroughCommand(osDeviceHandle,
                                           IDENTIFY, 0, 0,
                                           buffer, dataLength);
   IFLOG(D4) {
-    LOG(D4) << "identifyDevice_SAT: result=" << result << " dataLength=" << std::hex << "0x" << dataLength ;
+    LOG(D4) << "identifyDevice_SAT: result=" << result << " dataLength=" << HEXON(3) << dataLength ;
     if (0==result)
       DtaHexDump(buffer, dataLength);
   }
@@ -118,7 +179,7 @@ int DtaDevLinuxSata::identifyDevice_SAT( int fd, void * buffer , unsigned int & 
 }
 
 
-int DtaDevLinuxSata::PerformATAPassThroughCommand(int fd,
+int DtaDevLinuxSata::PerformATAPassThroughCommand(OSDEVICEHANDLE osDeviceHandle,
                                                   int cmd, int securityProtocol, int comID,
                                                   void * buffer,  unsigned int & bufferlen)
 {
@@ -167,12 +228,12 @@ int DtaDevLinuxSata::PerformATAPassThroughCommand(int fd,
 
   unsigned char sense[32];
   unsigned char senselen=sizeof(sense);
-  bzero(&sense, senselen);
+  memset(&sense, 0, senselen);
 
   unsigned int dataLength = bufferlen;
   unsigned char masked_status=GOOD;
 
-  int result=DtaDevLinuxScsi::PerformSCSICommand(fd,
+  int result=DtaDevLinuxScsi::PerformSCSICommand(osDeviceHandle,
                                                  dxfer_direction,
                                                  cdbBytes, (unsigned char)sizeof(cdb),
                                                  buffer, dataLength,
@@ -287,7 +348,7 @@ uint8_t DtaDevLinuxSata::sendCmd(ATACOMMAND cmd, uint8_t securityProtocol, uint1
   /*
    * Do the IO
    */
-  int result= PerformATAPassThroughCommand(fd, cmd, securityProtocol, comID,
+  int result= PerformATAPassThroughCommand(osDeviceHandle, cmd, securityProtocol, comID,
                                            buffer, bufferlen);
 
   LOG(D4) << "sendCmd: after -- result = " << result ;
@@ -305,5 +366,5 @@ uint8_t DtaDevLinuxSata::sendCmd(ATACOMMAND cmd, uint8_t securityProtocol, uint1
 bool  DtaDevLinuxSata::identify(DTA_DEVICE_INFO& disk_info)
 {
   InterfaceDeviceID interfaceDeviceIdentification;
-  return identifyUsingATAIdentifyDevice(fd, interfaceDeviceIdentification, disk_info, NULL);
+  return identifyUsingATAIdentifyDevice(osDeviceHandle, interfaceDeviceIdentification, disk_info, NULL);
 }

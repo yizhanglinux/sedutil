@@ -22,14 +22,17 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
-#include <sys/ioctl.h>
-#include <arpa/inet.h>
+//#include <sys/ioctl.h>
+//#include <arpa/inet.h>
+//#include <scsi/sg.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
+//#include <unistd.h>
+//#include <linux/hdreg.h>
 #include <errno.h>
 #include <vector>
 #include <fstream>
+#include <iomanip>
 #include "DtaDevMacOSSata.h"
 #include "DtaHexDump.h"
 #include "ParseATIdentify.h"
@@ -37,9 +40,46 @@
 //
 // taken from <scsi/scsi.h> to avoid SCSI/ATA name collision
 //
+DtaDevMacOSSata*
+DtaDevMacOSSata::getDtaDevMacOSSata(const char* devref, DTA_DEVICE_INFO& di) {
+
+  bool accessDenied=false;
+  OSDEVICEHANDLE osDeviceHandle = openAndCheckDeviceHandle(devref, accessDenied);
+    if (osDeviceHandle==INVALID_HANDLE_VALUE || accessDenied)
+        return NULL;
+
+    LOG(D4) << "Success opening device " << devref << " as file handle " << HEXON(4) << (size_t)osDeviceHandle;
 
 
-bool DtaDevMacOSSata::identifyUsingATAIdentifyDevice(io_connect_t connection,
+    InterfaceDeviceID interfaceDeviceIdentification;
+
+    // In theory every USB device should respond to Scsi commands, in particularly Inquiry.  Is this true?
+    dictionary* identifyCharacteristics = NULL;
+    if (DtaDevMacOSSata::identifyUsingATAIdentifyDevice(osDeviceHandle,
+        interfaceDeviceIdentification,
+        di,
+        &identifyCharacteristics)) {
+
+        // The completed identifyCharacteristics map could be useful to customizing code here
+        if (NULL != identifyCharacteristics) {
+            LOG(D3) << "identifyCharacteristics for ATA Device: ";
+            for (const auto& it : *identifyCharacteristics)
+                LOG(D3) << "  " << it.first << ":" << it.second;
+            delete identifyCharacteristics;
+            identifyCharacteristics = NULL;
+        }
+
+        LOG(D4) << " Device " << devref << " is Sata";
+        di.devType = DEVICE_TYPE_SATA;
+        return new DtaDevMacOSSata(osDeviceHandle);
+    } else {
+        closeDeviceHandle(osDeviceHandle);
+        return NULL;
+    }
+}
+
+
+bool DtaDevMacOSSata::identifyUsingATAIdentifyDevice(OSDEVICEHANDLE osDeviceHandle,
                                                      InterfaceDeviceID & interfaceDeviceIdentification,
                                                      DTA_DEVICE_INFO & disk_info,
                                                      dictionary ** ppIdentifyCharacteristics) {
@@ -49,18 +89,17 @@ bool DtaDevMacOSSata::identifyUsingATAIdentifyDevice(io_connect_t connection,
   // If it works, as a side effect, parse the Identify response
 
   bool isSAT = false;
-  void * identifyDeviceResponse = alloc_aligned_MIN_BUFFER_LENGTH_buffer ();
+  void * identifyDeviceResponse = alloc_aligned_MIN_BUFFER_LENGTH_buffer();
   if ( identifyDeviceResponse == NULL ) {
     LOG(E) << " *** memory buffer allocation failed *** !!!";
     return false;
   }
-  bzero ( identifyDeviceResponse, MIN_BUFFER_LENGTH );
-
 #define IDENTIFY_RESPONSE_SIZE 512
-  unsigned int dataLen = IDENTIFY_RESPONSE_SIZE;
+  memset(identifyDeviceResponse, 0, IDENTIFY_RESPONSE_SIZE );
 
+  unsigned int dataLen = IDENTIFY_RESPONSE_SIZE;
   LOG(D4) << "Invoking identifyDevice_SAT --  dataLen=" << std::hex << "0x" << dataLen ;
-  isSAT = (0 == identifyDevice_SAT(connection,identifyDeviceResponse, dataLen ));
+  isSAT = (0 == identifyDevice_SAT( osDeviceHandle, identifyDeviceResponse, dataLen ));
 
   if (isSAT) {
     LOG(D4) << " identifyDevice_SAT returned zero -- is SAT" ;
@@ -94,18 +133,18 @@ bool DtaDevMacOSSata::identifyUsingATAIdentifyDevice(io_connect_t connection,
   } else {
     LOG(D4) << " identifyDevice_SAT returned non-zero -- is not SAT" ;
   }
-  free(identifyDeviceResponse);
+  free_aligned_MIN_BUFFER_LENGTH_buffer(identifyDeviceResponse);
 
   return isSAT;
 }
 
 
 
-int DtaDevMacOSSata::identifyDevice_SAT(io_connect_t connection, void * buffer , unsigned int & dataLength)
+int DtaDevMacOSSata::identifyDevice_SAT( OSDEVICEHANDLE osDeviceHandle, void * buffer , unsigned int & dataLength)
 {
 
   // LOG(D4) << " identifyDevice_SAT about to PerformATAPassThroughCommand" ;
-  int result=PerformATAPassThroughCommand(connection,
+  int result=PerformATAPassThroughCommand(osDeviceHandle,
                                           IDENTIFY, 0, 0,
                                           buffer, dataLength);
   IFLOG(D4) {
@@ -117,83 +156,117 @@ int DtaDevMacOSSata::identifyDevice_SAT(io_connect_t connection, void * buffer ,
 }
 
 
-int DtaDevMacOSSata::PerformATAPassThroughCommand(io_connect_t connection,
-                                                  ATACOMMAND cmd, int securityProtocol, int comID,
+int DtaDevMacOSSata::PerformATAPassThroughCommand(OSDEVICEHANDLE osDeviceHandle,
+                                                  int cmd, int securityProtocol, int comID,
                                                   void * buffer,  unsigned int & bufferlen)
 {
   uint8_t protocol;
   int dxfer_direction;
   unsigned int timeout;
-  CScsiCmdATAPassThrough_12 cdb;
-    
-//    fprintf(stderr, "Before switch\n");
-    switch ((ATACOMMAND)cmd)
-    {
-        case (ATACOMMAND)IDENTIFY:
-//            fprintf(stderr, "case IDENTIFY\n");
-            timeout=600;  //  IDENTIFY sg.timeout = 600; // Sabrent USB-SATA adapter 1ms,6ms,20ms,60 NG, 600ms OK
-            protocol = PIO_DATA_IN;
-            dxfer_direction = PSC_FROM_DEV;
-            break;
-            
-        case (ATACOMMAND)IF_RECV:
-//            fprintf(stderr, "case IF_RECV\n");
-            timeout=60000;
-            protocol = PIO_DATA_IN;
-            dxfer_direction = PSC_FROM_DEV;
-            break;
-            
-        case (ATACOMMAND)IF_SEND:
-//            fprintf(stderr, "case IF_SEND\n");
-            timeout=60000;
-            protocol = PIO_DATA_OUT;
-            dxfer_direction = PSC_TO_DEV;
-            break;
-            
-        default:
-//            fprintf(stderr, "default case ??????******????????\n");
-            LOG(E) << "Exiting DtaDevMacOSSata::PerformATAPassThroughCommand because of unrecognized cmd=" << cmd << "?!" ;
-            return 0xff;
-    }
-//    fprintf(stderr, "After switch\n");
 
-    
+  switch (cmd)
+    {
+    case IDENTIFY:
+      timeout=600;  //  IDENTIFY sg.timeout = 600; // Sabrent USB-SATA adapter 1ms,6ms,20ms,60 NG, 600ms OK
+      protocol = PIO_DATA_IN;
+      dxfer_direction = PSC_FROM_DEV;
+      break;
+
+    case IF_RECV:
+      timeout=60000;
+      protocol = PIO_DATA_IN;
+      dxfer_direction = PSC_FROM_DEV;
+      break;
+
+    case IF_SEND:
+      timeout=60000;
+      protocol = PIO_DATA_OUT;
+      dxfer_direction = PSC_TO_DEV;
+      break;
+
+    default:
+      LOG(E) << "Exiting DtaDevMacOSSata::PerformATAPassThroughCommand because of unrecognized cmd=" << cmd << "?!" ;
+      return 0xff;
+    }
+
+
+  CScsiCmdATAPassThrough_12 cdb;
   uint8_t * cdbBytes=(uint8_t *)&cdb;  // We use direct byte pointer because bitfields are unreliable
-  cdbBytes[1] = (uint8_t)(protocol << 1);
-  cdbBytes[2] = (uint8_t)((protocol==PIO_DATA_IN ? 1 : 0) << 3 |  // TDir
-                          1                               << 2 |  // ByteBlock
-                          2                                       // TLength  10b => transfer length in Count
-                         );
-  cdb.m_Features = (uint8_t)securityProtocol;
-  cdb.m_Count = (uint8_t)(bufferlen/512);
+  cdbBytes[1] = static_cast<uint8_t>(protocol << 1);
+  cdbBytes[2] = static_cast<uint8_t>((protocol==PIO_DATA_IN ? 1 : 0) << 3 |  // TDir
+                1                               << 2 |  // ByteBlock
+                2                                       // TLength  10b => transfer length in Count
+                );
+  cdb.m_Features = static_cast<uint8_t>(securityProtocol);
+  cdb.m_Count = static_cast<uint8_t>(bufferlen/512);
   cdb.m_LBA_Mid = comID & 0xFF;          // ATA lbaMid   / TRUSTED COMID low
-  cdb.m_LBA_High = (comID >> 8) & 0xFF; // ATA lbaHihg  / TRUSTED COMID high
-  cdb.m_Command = (uint8_t)cmd;
+  cdb.m_LBA_High = (comID >> 8) & 0xFF;  // ATA lbaHigh  / TRUSTED COMID high
+  cdb.m_Command = static_cast<uint8_t>(cmd);
 
   unsigned char sense[32];
   unsigned char senselen=sizeof(sense);
-  bzero(&sense, senselen);
+  memset(&sense, 0, senselen);
 
   unsigned int dataLength = bufferlen;
   unsigned char masked_status=GOOD;
 
-  int result=DtaDevMacOSScsi::PerformSCSICommand(connection,
+  /*
+
+   For more information on Status codes consult the latest revision of SAM-x.
+
+Code	Name
+00h	GOOD
+02h	CHECK CONDITION
+04h	CONDITION MET
+08h	BUSY
+18h	RESERVATION CONFLICT
+28h	TASK SET FULL
+30h	ACA ACTIVE
+40h	TASK ABORTED
+
+  */
+  int result=PerformSCSICommand(osDeviceHandle,
                                                  dxfer_direction,
                                                  cdbBytes, (unsigned char)sizeof(cdb),
                                                  buffer, dataLength,
                                                  sense, senselen,
                                                  &masked_status,
                                                  timeout);
-  if (result != 0) {
+  if (result<0) {
     LOG(D4) << "PerformSCSICommand returned " << result;
-    return result;
+    LOG(D4) << "sense after ";
+    IFLOG(D4) DtaHexDump(&sense, senselen);
+    return 0xff;
   }
 
   LOG(D4) << "PerformSCSICommand returned " << result;
+  LOG(D4) << "sense after ";
+  IFLOG(D4) DtaHexDump(&sense, senselen);
+
+  // check for successful target completion
+  if (masked_status != GOOD)
+    {
+      LOG(D4) << "masked_status=" << masked_status << "=" << statusName(masked_status) << " != GOOD  cmd=" <<
+        (cmd == IF_SEND ? std::string("IF_SEND") :
+         cmd == IF_RECV ? std::string("IF_RECV") :
+         cmd == IDENTIFY ? std::string("IDENTIFY") :
+         std::to_string(cmd));
+      LOG(D4) << "sense after ";
+      IFLOG(D4) DtaHexDump(&sense, senselen);
+      return 0xff;
+    }
+
+  if (! ((0x00 == sense[0]) && (0x00 == sense[1])) ||
+      ((0x72 == sense[0]) && (0x0b == sense[1])) ) {
+    LOG(D4) << "PerformATAPassThroughCommand disqualifying ATA response --"
+            << " sense[0]=0x" << std::hex << sense[0]
+            << " sense[1]=0x" << std::hex << sense[1];
+    return 0xff; // not ATA response
+  }
 
   LOG(D4) << "buffer after ";
   IFLOG(D4) DtaHexDump(buffer, dataLength);
-  LOG(D4) << "PerformATAPassThroughCommand returning sense[11]=0x" << std::hex << sense[11];
+  LOG(D4) << "PerformATAPassThroughCommand returning sense[11]=0x" << std::hex << (unsigned int)sense[11];
   return (sense[11]);
 
 }
@@ -254,7 +327,7 @@ DtaDevMacOSSata::parseATAIdentifyDeviceResponse(const InterfaceDeviceID & interf
 uint8_t DtaDevMacOSSata::sendCmd(ATACOMMAND cmd, uint8_t securityProtocol, uint16_t comID,
                                  void * buffer, uint32_t bufferlen)
 {
-  LOG(D1) << "Entering DtaDevMacOSSata::sendCmd";
+  LOG(D4) << "Entering DtaDevMacOSSata::sendCmd";
 
   IFLOG(D4) {
     LOG(D4) << "sendCmd: before";
@@ -267,7 +340,7 @@ uint8_t DtaDevMacOSSata::sendCmd(ATACOMMAND cmd, uint8_t securityProtocol, uint1
   /*
    * Do the IO
    */
-  int result= PerformATAPassThroughCommand(connection, cmd, securityProtocol, comID,
+  int result= PerformATAPassThroughCommand(osDeviceHandle, cmd, securityProtocol, comID,
                                            buffer, bufferlen);
 
   LOG(D4) << "sendCmd: after -- result = " << result ;
@@ -278,12 +351,12 @@ uint8_t DtaDevMacOSSata::sendCmd(ATACOMMAND cmd, uint8_t securityProtocol, uint1
     }
   }
 
-  return result < 0 ? 0xFF : 0x00;
+  return static_cast<uint8_t>(result);
 }
 
 
 bool  DtaDevMacOSSata::identify(DTA_DEVICE_INFO& disk_info)
 {
   InterfaceDeviceID interfaceDeviceIdentification;
-  return identifyUsingATAIdentifyDevice(connection,interfaceDeviceIdentification, disk_info, NULL);
+  return identifyUsingATAIdentifyDevice(osDeviceHandle, interfaceDeviceIdentification, disk_info, NULL);
 }

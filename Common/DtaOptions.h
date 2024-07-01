@@ -22,15 +22,7 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
 #define	_DTAOPTIONS_H
 #include <cstdint>
 
-/** Output modes */
-typedef enum _sedutiloutput {
-	sedutilNormal,
-	sedutilReadable,
-	sedutilJSON
-} sedutiloutput;
-
-
-#define DEFAULT_OUTPUT_FORMAT sedutilReadable
+#include "log.h"
 
 #if DEBUG && defined(AUTOMATICALLY_BUMP_LOGGING_LEVEL_IN_DEBUG_BUILDS)
 #define DEFAULT_LOGGING_LEVEL 3

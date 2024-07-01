@@ -30,8 +30,8 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
 
 
 extern "C" {
-#include <cifra/pbkdf2.h>
-#include <cifra/sha1.h>
+#include "pbkdf2.h"
+#include "sha1.h"
 }
 
 
@@ -50,7 +50,7 @@ void DtaHashPassword(vector<uint8_t> &hash, char * password, vector<uint8_t> sal
 	if (0 == strnlen(password, 32)) {
 		goto exit;
 	}
-	hash.reserve(hashsize + 2); // hope this will prevent reallocation
+	hash.reserve(((size_t)hashsize) + 2); // hope this will prevent reallocation
 	for (uint8_t i = 0; i < hashsize; i++) {
 		hash.push_back(' ');
 	}

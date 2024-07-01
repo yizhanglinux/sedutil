@@ -32,12 +32,25 @@ typedef std::map<std::string,std::string>::iterator dictionary_iterator;
 class DtaDevMacOSBlockStorageDevice: public DtaDevMacOSDrive {
 public:
     using DtaDevMacOSDrive::DtaDevMacOSDrive;
-    
+
   /** Factory function to look at the devref to filter whether it could be an instance
    *
    * @param devref OS device reference e.g. "/dev/sda"
    */
   static bool isDtaDevMacOSBlockStorageDeviceDevRef(const char * devref);
+
+
+    /** Factory function to look at the devref and create an instance of
+     *  DtaDevMacOSBlockStorageDevice itself (for unrecognized drives)
+     *
+     * @param devref OS device reference e.g. "/dev/sda"
+     * @param disk_info reference to DTA_DEVICE_INFO structure filled out during device identification
+     */
+    static
+    DtaDevMacOSBlockStorageDevice *
+    getDtaDevMacOSBlockStorageDevice(const char * devref,
+                                     DTA_DEVICE_INFO & disk_info);
+
 
   /** Attempt an ATA security command IF_SEND/IF_RECV to a BlockStorageDevice device
    *  (Note that Sata devices are a separate subclass.)
@@ -61,7 +74,7 @@ public:
        *
        */
     static
-    std::vector<std::string> enumerateDtaDevMacOSBlockStorageDeviceDevRefs(void);
+    std::vector<std::string> enumerateDtaDevMacOSBlockStorageDeviceDevRefs(bool & accessDenied);
 
     static
   bool identifyUsingSCSIInquiry(io_connect_t connection,
@@ -74,17 +87,17 @@ public:
      *  DtaDevMacOSSata (SCSI/ATA translation for SATA drives)
      *    (if the device seems to know the SCSI ATA pass-through protocol)
      *
-     * @param driverService I/O registry entry for block storage device node from which to fill out `disk_info'`
-     * @param disk_info reference to DTA_DEVICE_INFO structure filled out 
+     * @param deviceService I/O registry entry for block storage device node from which to fill out `disk_info'`
+     * @param disk_info reference to DTA_DEVICE_INFO structure filled out
      */
-    
-    
-    
+
+
+
     // Get info from I/O Registry
     static
-    bool BlockStorageDeviceUpdate(io_registry_entry_t driverService, DTA_DEVICE_INFO & disk_info);
+    bool BlockStorageDeviceUpdate(io_registry_entry_t deviceService, DTA_DEVICE_INFO & disk_info);
 
-    DtaDevMacOSBlockStorageDevice(io_registry_entry_t dS)
-    : DtaDevMacOSDrive::DtaDevMacOSDrive(dS, IO_OBJECT_NULL)
-    {};
 };
+
+
+CFDictionaryRef createIOBlockStorageDeviceProperties(io_service_t deviceService);

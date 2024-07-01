@@ -21,7 +21,7 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "os.h"
 #include <stdio.h>
-#include <log/log.h>
+#include "log.h"
 
 #include <iostream>
 #include <fstream>

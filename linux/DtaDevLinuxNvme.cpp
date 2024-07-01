@@ -58,27 +58,30 @@ DtaDevLinuxNvme * DtaDevLinuxNvme::getDtaDevLinuxNvme(const char * devref,
   if (!isDtaDevLinuxNvmeDevRef(devref))
     return NULL;
 
-  int fd_=fdopen(devref);
-  if (fd_ < 0) {
+  bool accessDenied=false;
+  OSDEVICEHANDLE osDeviceHandle = openDeviceHandle(devref, accessDenied);
+  bool result = (osDeviceHandle!=INVALID_HANDLE_VALUE && !accessDenied);
+  if (!result) {
     // This is a D1 because diskscan looks for open fail to end scan
-    LOG(D1) << "Error opening device " << devref << " " << (int32_t) fd_;
-    //        if (-EPERM == fd) {
+    LOG(D1) << "Error opening device " << devref << " " << handleDescriptor(osDeviceHandle);
+    //        if (-EPERM == (int)osDeviceHandle) {
     //            LOG(E) << "You do not have permission to access the raw disk in write mode";
     //            LOG(E) << "Perhaps you might try sudo to run as root";
     //        }
+    if (osDeviceHandle!=INVALID_HANDLE_VALUE) closeDeviceHandle(osDeviceHandle);
     return NULL;
   }
 
 
-  LOG(D4) << "Success opening device " << devref << " as file handle " << (int32_t) fd_;
+  LOG(D4) << "Success opening device " << devref << " as file handle " << handleDescriptor(osDeviceHandle);
 
 
-  DtaDevLinuxNvme * drive = new DtaDevLinuxNvme((int)fd_);
+  DtaDevLinuxNvme * drive = new DtaDevLinuxNvme(osDeviceHandle);
 
   if (!drive->identify(disk_info)) {
     disk_info.devType = DEVICE_TYPE_OTHER;
-    LOG(E) << "Device "<< devref <<" is NOT Nvme?! -- file handle " << (int32_t) fd_;
-    delete drive; // => close(fd)
+    LOG(E) << "Device "<< devref <<" is NOT Nvme?! -- file handle " << handleDescriptor(osDeviceHandle);
+    delete drive; // => close(osDeviceHandle)
     drive = NULL ;
   } else {
     disk_info.devType = DEVICE_TYPE_NVME;
@@ -110,7 +113,7 @@ uint8_t DtaDevLinuxNvme::sendCmd(ATACOMMAND cmd, uint8_t protocol, uint16_t comI
   nvme_cmd.data_len = bufferlen;
   nvme_cmd.addr = (__u64)buffer;
 
-  int err = ioctl(fd, NVME_IOCTL_ADMIN_CMD, &nvme_cmd);
+  int err = ioctl(handleDescriptor(osDeviceHandle), NVME_IOCTL_ADMIN_CMD, &nvme_cmd);
 
   if (err < 0)
     return errno;
@@ -128,7 +131,7 @@ uint8_t DtaDevLinuxNvme::sendCmd(ATACOMMAND cmd, uint8_t protocol, uint16_t comI
   return err;
 }
 
-bool DtaDevLinuxNvme::identifyUsingNvmeIdentify(int fd,
+bool DtaDevLinuxNvme::identifyUsingNvmeIdentify(OSDEVICEHANDLE osDeviceHandle,
                                                 InterfaceDeviceID &,  // Currently unused
                                                 DTA_DEVICE_INFO & disk_info)
 {
@@ -146,7 +149,7 @@ bool DtaDevLinuxNvme::identifyUsingNvmeIdentify(int fd,
   cmd.data_len = 4096;
   cmd.cdw10 = 1;
 
-  int err = ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd);
+  int err = ioctl(handleDescriptor(osDeviceHandle), NVME_IOCTL_ADMIN_CMD, &cmd);
 
   if (err) {
     disk_info.devType = DEVICE_TYPE_OTHER;

@@ -37,13 +37,14 @@ Common/DtaDevFactory.cpp \
 Common/DtaDevOS.h \
 Common/DtaDevOS.cpp \
 Common/DtaDevOSDrive.h \
-Common/DtaDevOSDrive.cpp \
 Common/InterfaceDeviceID.h \
 Common/InterfaceDeviceID.cpp \
 Common/ParseATIdentify.h \
 Common/ParseATIdentify.cpp \
 Common/ParseDiscovery0Features.h \
-Common/ParseDiscovery0Features.cpp
+Common/ParseDiscovery0Features.cpp \
+Common/log.h \
+Common/log.cpp
 
 SEDUTIL_LINUX_CODE = \
 linux/DtaConstants.h \
@@ -62,10 +63,6 @@ SEDUTIL_CUSTOMIZATIONS_COMMON_CODE = \
 Customizations/Common/DtaAuthorizeSedutilExecution.cpp \
 Customizations/Common/DtaExtensionOptionEnumerations.h \
 Customizations/Common/DtaDevOpalLoadPBA.cpp
-
-SEDUTIL_LOG_CODE = \
-log/log.h \
-log/log.cpp
 
 SEDUTIL_CIFRA_CODE = \
 Common/pbkdf2/blockwise.h \
@@ -93,6 +90,8 @@ sedutil_cli_SOURCES = \
 	$(SEDUTIL_LOG_CODE) \
 	$(SEDUTIL_CIFRA_CODE)
 
+LDADD = -lsystemd
+
 CLEANFILES = linux/Version.h
 
 BUILT_SOURCES = linux/Version.h
@@ -107,12 +106,14 @@ linuxpba_SOURCES = LinuxPBA/GetPassPhrase.cpp LinuxPBA/UnlockSEDs.cpp \
 	$(SEDUTIL_CIFRA_CODE) \
 	LinuxPBA/LinuxPBA.cpp
 
-EXTRA_DIST = linux/GitVersion.sh linux/PSIDRevert_LINUX.txt linux/TestSuite.sh README.md docs/sedutil-cli.8
+EXTRA_DIST = Customizations/linux/CLI/GitVersion.sh \
+             linux/PSIDRevert_LINUX.txt linux/TestSuite.sh \
+             README.md docs/sedutil-cli.8
 
 man_MANS = docs/sedutil-cli.8
 
 linux/Version.h:
-	$(srcdir)/linux/GitVersion.sh > linux/Version.h
+	$(srcdir)/Customizations/linux/CLI/GitVersion.sh > linux/Version.h
 
 .INTERMEDIATE: linux/Version.h
 

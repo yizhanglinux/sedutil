@@ -18,40 +18,21 @@
 
    * C:E********************************************************************** */
 
-#include <SEDKernelInterface/SEDKernelInterface.h>
-#include "log.h"
-#include "DtaDevOSDrive.h"
+#include <string>
+#include <algorithm>
+#include <CoreFoundation/CFNumber.h>
+#include <CoreFoundation/CFDictionary.h>
 #include "DtaDevMacOSDrive.h"
-#include "DtaDevMacOSBlockStorageDevice.h"
-
-/** Factory functions
- *
- * Static class members of DtaDevOSDrive that are passed through
- * to DtaDevMacOSDrive
- *
- */
+#include <IOKit/storage/IOMedia.h>
+#include <IOKit/storage/nvme/NVMeSMARTLibExternal.h>
+#include <SEDKernelInterface/SEDKernelInterface.h>
 
 
-bool DtaDevOSDrive::isDtaDevOSDriveDevRef(const char * devref) {
-  return DtaDevMacOSDrive::isDtaDevMacOSDriveDevRef(devref);
-}
-
-std::vector<std::string> DtaDevOSDrive::enumerateDtaDevOSDriveDevRefs() {
-  return DtaDevMacOSDrive::enumerateDtaDevMacOSDriveDevRefs();
-}
-
-DtaDevOSDrive * DtaDevOSDrive::getDtaDevOSDrive(const char * devref,
-                                                DTA_DEVICE_INFO &disk_info)
-{
-  return static_cast<DtaDevOSDrive *>(DtaDevMacOSDrive::getDtaDevMacOSDrive(devref, disk_info));
-}
-
-
-#if defined(NVME)
-#include "DtaDevMacOSNvme.h"
-#endif // defined(NVME)
-#include "DtaDevMacOSScsi.h"
+// #include "DtaDevMacOSAta.h"
 #include "DtaDevMacOSSata.h"
+#include "DtaDevMacOSScsi.h"
+// #include "DtaDevMacOSNvme.h"
+#include "DtaDevMacOSBlockStorageDevice.h"
 
 
 /** Factory functions
@@ -61,82 +42,263 @@ DtaDevOSDrive * DtaDevOSDrive::getDtaDevOSDrive(const char * devref,
  *
  */
 
-DtaDevMacOSDrive * DtaDevMacOSDrive::getDtaDevMacOSDrive(const char * devref,
-                                                         DTA_DEVICE_INFO &disk_info)
-{
-    disk_info.devType = DEVICE_TYPE_OTHER;
-    
-    io_registry_entry_t driverService;
-    io_connect_t connection = fdopen(devref, driverService);
-    
-    LOG(D4)
-    << "getDtaDevMacOSDrive opening device " << devref
-    << " "
-    << "with driverService " << driverService
-    << " "
-    << "as connection " << connection
-    ;
-    //    fprintf(stderr, "isTper=%s\n", isTPer ? "true" : "false");
-    
-    // Best case: devref -> TPer driver
-    if (connection != IO_OBJECT_NULL) {
-        kern_return_t ret = TPerUpdate(connection, driverService, &disk_info);  // a/k/a discovery0, done by the driver
-        if (ret!=KERN_SUCCESS)
-        {
-            fprintf(stderr, "TPerUpdate failed with return code %u=0x%08x", ret, ret);
-            IOObjectRelease(driverService);
-            CloseUserClient(connection);
-            return NULL;
-        }
-        
-        switch (disk_info.devType)
-        {
-            case DEVICE_TYPE_SAS:
-                return new DtaDevMacOSScsi(driverService, connection);
-            case DEVICE_TYPE_SATA:
-                return new DtaDevMacOSSata(driverService, connection);
-            default:
-                LOG(E)
-                << "TPerUpdate failed with unexpected di.devtype "
-                << disk_info.devType << "=0x" << std::hex << std::setw(8) << disk_info.devType;
-                IOObjectRelease(driverService);
-                CloseUserClient(connection);
-                return NULL;
-        }
-    }
 
-    // OK case: devref -> BlockStorageDevice -- can't do useful I/O, but the I/O Registry can fill in useful info
-    if (driverService != IO_OBJECT_NULL &&
-        DtaDevMacOSBlockStorageDevice::BlockStorageDeviceUpdate(driverService, disk_info)) {
-            return new DtaDevMacOSBlockStorageDevice(driverService);
-    }
-    
-    return NULL;
+
+
+
+typedef std::map<std::string, std::string>dictionary;
+
+/**
+ * Converts a CFString to a UTF-8 std::string if possible.
+ *
+ * @param input A reference to the CFString to convert.
+ * @return Returns a std::string containing the contents of CFString converted to UTF-8. Returns
+ *  an empty string if the input reference is null or conversion is not possible.
+ */
+// Modified from https://gist.githubusercontent.com/peter-bloomfield/1b228e2bb654702b1e50ef7524121fb9/raw/934184166a8c3ff403dd5d7f8c0003810014f73d/cfStringToStdString.cpp per comments
+static
+std::string cfStringToStdString(CFStringRef input, bool & error) {
+  error = false;
+  if (!input)
+    return {};
+
+  // Attempt to access the underlying buffer directly. This only works if no conversion or
+  //  internal allocation is required.
+  auto originalBuffer{ CFStringGetCStringPtr(input, kCFStringEncodingUTF8) };
+  if (originalBuffer)
+    return originalBuffer;
+
+  // Copy the data out to a local buffer.
+  CFIndex lengthInUtf16{ CFStringGetLength(input) };
+  CFIndex maxLengthInUtf8{ CFStringGetMaximumSizeForEncoding(lengthInUtf16,
+                                                             kCFStringEncodingUTF8) + 1 }; // <-- leave room for null terminator
+  std::vector<char> localBuffer((size_t)maxLengthInUtf8);
+
+  if (CFStringGetCString(input, localBuffer.data(), maxLengthInUtf8, kCFStringEncodingUTF8))
+    return localBuffer.data();
+
+  error = true;
+  return {};
 }
 
-using namespace std;
-vector<string> DtaDevMacOSDrive::enumerateDtaDevMacOSDriveDevRefs()
+
+// Create a copy of the properties of this I/O registry entry
+// Receiver owns this CFMutableDictionary instance if not NULL
+static void collectProperties(CFDictionaryRef cfproperties, dictionary * properties); // called recursively
+
+static void collectProperty(const void *vkey, const void *vvalue, void * vproperties){
+    dictionary * properties = (dictionary *)vproperties;
+
+    // Get the key --  should be a string
+    std::string key, value="<\?\?\?>";
+    CFTypeID keyTypeID = CFGetTypeID(vkey);
+    if (CFStringGetTypeID() == keyTypeID) {
+        bool error=false;
+        key = cfStringToStdString(reinterpret_cast<CFStringRef>(vkey), error);
+        if (error) {
+            LOG(E) << "Failed to get key as string " << HEXON(sizeof(const void *)) << vkey;
+            return;
+        }
+    } else {
+        LOG(E) << "Unrecognized key type " << (CFTypeRef)vkey;
+        return;
+    };
+
+    // Get the value -- could be a Bool, Dict, Data, String, or Number
+    CFTypeID valueTypeID = CFGetTypeID(vvalue);
+    if (CFStringGetTypeID() == valueTypeID) {
+        // String
+        bool error=false;
+        value = cfStringToStdString(reinterpret_cast<CFStringRef>(vvalue), error);
+        if (error) {
+            LOG(E) << "Failed to get key as string " << HEXON(sizeof(const void *)) << vkey;
+            return;
+        }
+    } else if (CFBooleanGetTypeID() == valueTypeID) {
+        // Bool
+        value = std::string(CFBooleanGetValue(reinterpret_cast<CFBooleanRef>(vvalue)) ? "true" : "false");
+    } else if (CFNumberGetTypeID() == valueTypeID) {
+        // Number
+        if (CFNumberIsFloatType(reinterpret_cast<CFNumberRef>(vvalue))) {
+            // Float
+            double dvalue=0.0;
+            bool error=!CFNumberGetValue(reinterpret_cast<CFNumberRef>(vvalue), kCFNumberDoubleType, (void *)&dvalue);
+            if (error) {
+                LOG(E) << "Failed to get value as float " << HEXON(sizeof(vvalue)) << vvalue;
+                return;
+            }
+            value = std::to_string(dvalue);
+        } else {
+            // Integer
+            long long llvalue=0LL;
+            bool error=!CFNumberGetValue(reinterpret_cast<CFNumberRef>(vvalue), kCFNumberLongLongType, (void *)&llvalue);
+            if (error) {
+                LOG(E) << "Failed to get value as integer " << HEXON(sizeof(vvalue)) << vvalue;
+                return;
+            }
+            value = std::to_string(llvalue);
+        }
+    } else if (CFDataGetTypeID() == valueTypeID) {
+        // Data
+    } else if (CFArrayGetTypeID() == valueTypeID) {
+        // Array
+    } else if (CFDictionaryGetTypeID() == valueTypeID) {
+        // Dict -- call recursively to flatten subdirectory properties into `properties'
+        collectProperties(reinterpret_cast<CFDictionaryRef>(vvalue), properties);
+        return;
+    } else {
+        // Unknown
+        LOG(E) << "Failed to get value " << HEXON(sizeof(vvalue)) << vvalue << " with type ID "  << HEXON(sizeof(valueTypeID)) << valueTypeID;
+        return;
+    }
+
+    (*properties)[key]=value;
+}
+
+static
+void collectProperties(CFDictionaryRef cfproperties, dictionary * properties) {
+  CFDictionaryApplyFunction(cfproperties, collectProperty, (void *)properties);
+}
+
+
+static
+dictionary * copyDeviceProperties(io_service_t deviceService) {
+  CFDictionaryRef cfproperties = createIOBlockStorageDeviceProperties(deviceService);
+
+  if (cfproperties==NULL)
+    return NULL;
+
+  dictionary * properties = new dictionary;
+  collectProperties(cfproperties, properties);
+  return properties;
+}
+
+
+static
+dictionary* getOSSpecificInformation(OSDEVICEHANDLE osDeviceHandle,
+                                     const char* /* TODO: devref */,
+                                     InterfaceDeviceID& /* TODO: interfaceDeviceIdentification */,
+                                     DTA_DEVICE_INFO& device_info)
 {
-  /**
-   *  The code below does not work on MacOS because of container disks, which result in more than one
-   *  disknn being assigned to the same physical device.  Instead we must abstain implementation at this
-   *  level and instead ask DtaDevMacOSBlockStorageDevice to enumerate.
-   */
+  io_service_t deviceService=handleDeviceService(osDeviceHandle);
+  io_connect_t connection=handleConnection(osDeviceHandle);
 
-#if defined(EACH_DEV_DISK_CORRESPONDS_TO_AT_MOST_ONE_BLOCK_STORAGE_DEVICE)
-    vector<string> devices;
 
-  // MacOS drive names are disk0-disk99
-  char devref[261];
-  for (int i=0; i<=99; i++) {
-      snprintf(devref,sizeof(devref),"/dev/disk%d",i);
-      if (isDtaDevOSDriveDevRef(devref))
-        devices.push_back(string(devref));
+
+  if (IO_OBJECT_NULL == deviceService) {
+    return NULL;
   }
 
-    return devices;
-#endif // defined(EACH_DEV_DISK_CORRESPONDS_TO_AT_MOST_ONE_BLOCK_STORAGE_DEVICE)
-    
-    return DtaDevMacOSBlockStorageDevice::enumerateDtaDevMacOSBlockStorageDeviceDevRefs();
+  bool success=false;
+  if (IO_OBJECT_NULL != connection) {
+    io_service_t controllerService = findParent(deviceService);
+    success=(KERN_SUCCESS == TPerUpdate(connection, controllerService, &device_info));
+    IOObjectRelease(controllerService);
+  } else {
+    success=(DtaDevMacOSBlockStorageDevice::BlockStorageDeviceUpdate(deviceService, device_info));
+  }
+  if (!success)
+    return NULL;
 
+  return copyDeviceProperties(deviceService);
+}
+
+
+
+DtaDevMacOSDrive * DtaDevMacOSDrive::getDtaDevMacOSDrive(const char * devref,
+                                                         DTA_DEVICE_INFO &device_info)
+{
+  bool accessDenied=false;
+  OSDEVICEHANDLE osDeviceHandle = DtaDevMacOSDrive::openDeviceHandle(devref, accessDenied);
+  if (INVALID_HANDLE_VALUE==osDeviceHandle || accessDenied) {
+    return NULL;
+  }
+
+  DtaDevMacOSDrive* drive = NULL;
+  InterfaceDeviceID interfaceDeviceIdentification;
+  memset(interfaceDeviceIdentification, 0, sizeof(interfaceDeviceIdentification));
+  LOG(D4) << devref << " driveParameters:";
+  dictionary * maybeDriveParameters =
+    getOSSpecificInformation(osDeviceHandle, devref, interfaceDeviceIdentification, device_info);
+  DtaDevMacOSDrive::closeDeviceHandle(osDeviceHandle);
+
+  if (maybeDriveParameters == NULL) {
+    //	  LOG(E) << "Failed to determine drive parameters for " << devref;
+    return NULL;
+  }
+
+  dictionary & driveParameters = *maybeDriveParameters;
+  IFLOG(D4)
+    for (const auto & pair : driveParameters) {
+      LOG(D4) << pair.first << ":\"" << pair.second << "\"";
+    }
+
+#define trySubclass(variant)                                                                \
+  if ((drive = DtaDevMacOS##variant::getDtaDevMacOS##variant(devref, device_info)) != NULL) \
+    {                                                                                       \
+      break;                                                                                \
+    } else
+
+#define logSubclassFailed(variant)                                                                   \
+  LOG(D4) << "DtaDevMacOS" #variant "::getDtaDevMacOS" #variant "(\"" << devref << "\", disk_info) " \
+          << "returned NULL";
+
+#define skipSubclass(variant)                                                                        \
+  LOG(D4) << "DtaDevMacOS" #variant "::getDtaDevMacOS" #variant "(\"" << devref << "\", disk_info) " \
+          << "unimplmented";
+
+
+  // Create a subclass instance based on device_info.devType as determined by
+  // getOSSpecificInformation.  Customizing code has device_info and
+  // drive parameters available.
+  //
+  switch (device_info.devType) {
+  case DEVICE_TYPE_SCSI:  // SCSI
+  case DEVICE_TYPE_SAS:   // SCSI
+    trySubclass(Scsi)
+      break;
+
+  case DEVICE_TYPE_USB:   // UAS SAT -- USB -> SCSI -> AT pass-through
+    //  case DEVICE_TYPE_SATA:  // synonym
+    if (!deviceNeedsSpecialAction(interfaceDeviceIdentification,avoidSlowSATATimeout)) {
+      trySubclass(Sata);
+    }
+    if (!deviceNeedsSpecialAction(interfaceDeviceIdentification,avoidSlowSASTimeout)) {
+      trySubclass(Scsi);
+    }
+    break;
+
+  case DEVICE_TYPE_NVME:  // NVMe
+    // TODO: Just hack by using Scsi for now.  BlockStorageDevice?
+    if (deviceNeedsSpecialAction(interfaceDeviceIdentification, acceptPseudoDeviceImmediately)) {
+      trySubclass(BlockStorageDevice);   // TODO: hack
+      break;
+    }
+
+    //      trySubclass(Nvme)   // TODO test
+    trySubclass(BlockStorageDevice);   // TODO: hack
+    break;
+
+  case DEVICE_TYPE_ATA:   // SATA / PATA
+    skipSubclass(Ata)    // TODO
+      break;
+
+  case DEVICE_TYPE_OTHER:
+    //	  LOG(E) << "Unimplemented device type " << devref;
+    break;
+
+  default:
+    break;
+  }
+
+  delete &driveParameters;
+  return drive ;
+}
+
+
+
+
+bool DtaDevMacOSDrive::isDtaDevMacOSDriveDevRef(const char * devref)
+{
+    return DtaDevMacOSBlockStorageDevice::isDtaDevMacOSBlockStorageDeviceDevRef(devref);
 }

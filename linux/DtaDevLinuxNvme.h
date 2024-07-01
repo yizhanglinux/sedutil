@@ -33,8 +33,9 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
  */
 #define is_aligned(POINTER, BYTE_COUNT) \
     (((uintptr_t)(const void *)(POINTER)) % (BYTE_COUNT) == 0)
-class DtaDevLinuxNvme: public DtaDevLinuxDrive{
+class DtaDevLinuxNvme: public DtaDevLinuxDrive {
 public:
+  using DtaDevLinuxDrive::DtaDevLinuxDrive;
 
   static bool isDtaDevLinuxNvmeDevRef(const char * devref);
 
@@ -55,20 +56,12 @@ public:
     virtual bool identify(DTA_DEVICE_INFO& disk_info)
   {
     InterfaceDeviceID interfaceDeviceIdentification;
-    return  identifyUsingNvmeIdentify(fd, interfaceDeviceIdentification, disk_info);
+    return  identifyUsingNvmeIdentify(osDeviceHandle, interfaceDeviceIdentification, disk_info);
   }
 
 
-  DtaDevLinuxNvme(int _fd)
-    : DtaDevLinuxDrive(_fd)
-  {}
-
-  ~DtaDevLinuxNvme(){}
-
-
   static
-  bool identifyUsingNvmeIdentify(int fd,
+  bool identifyUsingNvmeIdentify(OSDEVICEHANDLE osDeviceHandle,
                                  InterfaceDeviceID & interfaceDeviceIdentification,
                                  DTA_DEVICE_INFO & disk_info);
-
 };

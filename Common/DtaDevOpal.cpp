@@ -21,23 +21,9 @@
  * also supports the Opal 1.0 SSC
  */
 
-#if defined(__unix__) || defined(linux) || defined(__linux__) || defined(__gnu_linux__) || defined(__APPLE__)
-#else // Windows
-#pragma warning(disable: 4224) //C2224: conversion from int to char , possible loss of data
-#pragma warning(disable: 4244) //C4244: 'argument' : conversion from 'uint16_t' to 'uint8_t', possible loss of data
-#pragma warning(disable: 4996)
-#pragma comment(lib, "rpcrt4.lib")  // UuidCreate - Minimum supported OS Win 2000
-#endif
 
 #include "os.h"
-#include <log/log.h>
-
-#if defined(__unix__) || defined(linux) || defined(__linux__) || defined(__gnu_linux__) || defined(__APPLE__)
-#else // Windows
-#include <Windows.h>
-#include "compressapi-8.1.h"
-#include "sedsize.h"
-#endif
+#include "log.h"
 
 #include <stdio.h>
 #include <iostream>
@@ -309,9 +295,7 @@ uint8_t DtaDevOpal::initialSetup(char * password)
     LOG(E) << "enable user read failed " << dev;
     return lastRC;
   }
-  char strname[20];
-  memset(strname, 0, 20);
-  strncpy(strname, "USER1", 6);
+  char strname[20] = "USER1" "\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
   if ((lastRC = setPassword(password, buf, strname)) != 0) { // set User1 password as USER1 default
     LOG(E) << "set user password failed " << dev;
     return lastRC;
@@ -472,7 +456,7 @@ uint8_t DtaDevOpal::setup_SUM(uint8_t lockingrange, uint64_t start, uint64_t len
 DtaDevOpal::lrStatus_t DtaDevOpal::getLockingRange_status(uint8_t lockingrange, char * password)
 {
   uint8_t lastRC;
-  lrStatus_t lrStatus;
+  lrStatus_t lrStatus = { DTAERROR_INVALID_COMMAND };
   LOG(D1) << "Entering DtaDevOpal:getLockingRange_status() " << dev;
   vector<uint8_t> LR;
   LR.push_back(OPAL_SHORT_ATOM::BYTESTRING8);
@@ -2966,7 +2950,7 @@ uint8_t DtaDevOpal::exec(DtaCommand * cmd, DtaResponse & resp, uint8_t protocol)
 
   do {
     osmsSleep(25); // could it be too fast if multiple drive situation ?????, 25->250 does not help; 25->50 better, ->100
-    bzero(cmd->getRespBuffer(), cmd->getRespBufferSize());
+    memset(cmd->getRespBuffer(), 0, cmd->getRespBufferSize());
 # if USING_OPER
     if (oper == 1 )
       lastRC = sendCmd(IF_RECV, protocol, comID(), cmd->getRespBuffer(), 2048); //  IO_BUFFER_LENGTH);

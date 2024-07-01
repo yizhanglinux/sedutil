@@ -19,6 +19,9 @@
    * C:E********************************************************************** */
 
 
+#include "os.h"
+#include "log.h"
+
 #include "DtaDev.h"
 #include "DtaDevOS.h"
 
@@ -42,7 +45,6 @@ uint8_t DtaDev::getDtaDev(const char * devref, DtaDev * & device, bool genericIf
 
 
 
-#include "log.h"
 #include "DtaDevOpal1.h"
 #include "DtaDevOpal2.h"
 #include "DtaDevEnterprise.h"

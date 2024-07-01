@@ -18,13 +18,14 @@
 
    * C:E********************************************************************** */
 /** Base device class.
- * An OS port must create a subclass of this class
- * implementing sendcmd, osmsSleep and identify
+ * An OS port must create subclasses of this class
+ * implementing the SWG SSCs and holding an instance
+ * of a "drive" object that implements sendcmd and identify
  * specific to the IO requirements of that OS
  */
 #include "os.h"
 #include <stdio.h>
-#include <log/log.h>
+#include "log.h"
 #include <iostream>
 #include <iomanip>
 #include "DtaOptions.h"

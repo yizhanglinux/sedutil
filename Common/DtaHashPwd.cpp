@@ -174,7 +174,7 @@ void DtaHashPwd(vector<uint8_t> &hash, char * password, DtaDev * d, unsigned int
     vector<uint8_t> salt(d->getPasswordSalt());
 #else // ! defined( USE_PASSWORD_SALT )
     char serialNum[21];
-    bzero(serialNum, sizeof(serialNum));
+    memset(serialNum, 0, sizeof(serialNum));
     strncpy(serialNum, d->getSerialNum(),sizeof(serialNum));
     vector<uint8_t> salt(serialNum,serialNum+sizeof(serialNum)-1);
 #endif // defined( USE_PASSWORD_SALT )
@@ -198,7 +198,7 @@ void DtaHashPwd(vector<uint8_t> &hash, char * password, DtaDev * d, unsigned int
 	IFLOG(D4) fprintf(Output2FILE::Stream(), "salt as string =%s", salt.data());
     IFLOG(D4) fprintf(Output2FILE::Stream(), "\n");
     
-    IFLOG(D4) fprintf(Output2FILE::Stream(), "Hashed password size = %lu",hash.size());
+    IFLOG(D4) fprintf(Output2FILE::Stream(), "Hashed password size = %llu",(unsigned long long)hash.size());
     IFLOG(D4) fprintf(Output2FILE::Stream(), "\n");
     IFLOG(D4) fprintf(Output2FILE::Stream(), "hashed password:\n");
 	for (size_t i = 0; i < hash.size(); i++) IFLOG(D4) fprintf(Output2FILE::Stream(), "%02X", hash[i]);
@@ -217,11 +217,11 @@ struct PBKDF_TestTuple
 
 static
 int testresult(std::vector<uint8_t> &result, const char * expected, size_t len) {
-	char work[50];
+	char work[50] = { 0 };
 	if (len > 50) return 1;
 	int p = 0;
 	printf("Expected Result: %s\nActual Result  : ", expected);
-	for (uint32_t i = 0; i < len; i++) { printf("%02x", result[i + 2]); }; printf("\n");
+	for (uint32_t i = 0; i < len; i++) { printf("%02x", result[(uint8_t)(i + 2)]); }; printf("\n");
 	for (uint32_t i = 0; i < len * 2; i += 2) {
 		work[p] = expected[i] & 0x40 ? 16 * ((expected[i] & 0xf) + 9) : 16 * (expected[i] & 0xf);
 		work[p] += expected[i + 1] & 0x40 ? (expected[i + 1] & 0xf) + 9 : expected[i + 1] & 0xf;
@@ -276,7 +276,7 @@ int TestPBKDF2()
     };
 
     cout << "\nPKCS #5 PBKDF2 validation suite running ... \n\n";
-    pass = Testsedutil(testSet, sizeof (testSet) / sizeof (testSet[0])) && pass;
+	if (!Testsedutil(testSet, sizeof(testSet) / sizeof(testSet[0]))) pass = false;
     cout << "\nPKCS #5 PBKDF2 validation suite ... ";
     if (pass)
         cout << "passed\n";

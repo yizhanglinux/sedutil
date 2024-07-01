@@ -27,17 +27,27 @@ void parseATIdentifyResponse( const IDENTIFY_RESPONSE * presp, DTA_DEVICE_INFO *
     }
 #define respFieldnotAllZeros(respFieldName) \
     (!std::all_of(&resp.respFieldName, &resp.respFieldName+sizeof(resp.respFieldName), [](const unsigned char *b) { return *b==0; }))
+
 #define P_16_COPY_NONZERO_RESP_TO_DI(respFieldName,diFieldName) \
-    if (respFieldnotAllZeros(respFieldName)) { P_16_COPY_RESP_TO_DI(respFieldName,diFieldName) }
+    if (respFieldnotAllZeros(respFieldName)) { \
+         P_16_COPY_RESP_TO_DI(respFieldName,diFieldName) \
+    }
+#define P_16_COPY_NONZERO_RESP_STRING_TO_DI(respFieldName,diFieldName) \
+    if (respFieldnotAllZeros(respFieldName)) { \
+         P_16_COPY_RESP_TO_DI(respFieldName,diFieldName) \
+         di.diFieldName##Null = 0; \
+    }
 
     memset(&di.vendorID, 0, sizeof(di.vendorID));
 
     P_16_COPY_RESP_TO_DI(serialNumber    , passwordSalt )  // save a copy before polishing
 
-    P_16_COPY_NONZERO_RESP_TO_DI(serialNumber    , serialNum    )
-    P_16_COPY_NONZERO_RESP_TO_DI(firmwareRevision, firmwareRev  )
-    P_16_COPY_NONZERO_RESP_TO_DI(modelNum        , modelNum     )
+    P_16_COPY_NONZERO_RESP_STRING_TO_DI(serialNumber    , serialNum    )
+    P_16_COPY_NONZERO_RESP_STRING_TO_DI(firmwareRevision, firmwareRev  )
+    P_16_COPY_NONZERO_RESP_STRING_TO_DI(modelNum        , modelNum     )
     P_16_COPY_NONZERO_RESP_TO_DI(worldWideName   , worldWideName)
+
+#undef P_16_COPY_NONZERO_RESP_STRING_TO_DI
 #undef P_16_COPY_NONZERO_RESP_TO_DI
 #undef respFieldnotAllZeros
 #undef P_16_COPY_RESP_TO_DI

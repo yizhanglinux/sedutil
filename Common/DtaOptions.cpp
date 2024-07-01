@@ -122,8 +122,6 @@ void usage()
     return;
 }
 
-/* Default to output that omits timestamps and goes to stdout */
-sedutiloutput outputFormat = DEFAULT_OUTPUT_FORMAT;
 
 #define LOCKINGRANGEARG(lockingrange) \
 TESTARG(0, lockingrange, 0)            \
@@ -186,7 +184,10 @@ uint8_t DtaOptions(int argc, char * argv[], DTA_OPTIONS * opts)
         if (!(strcmp("-h", argv[i])) || !(strcmp("--help", argv[i]))) {
             usage();
             return DTAERROR_INVALID_COMMAND;
-        } else if ('v' == argv[i][1]) {
+        }
+        
+        if ('v' == argv[i][1]) {
+            // logging level set to length of any arg staring with 'v'
           baseOptions += 1;
           loggingLevel += (uint16_t)(strlen(argv[i]) - 1);
           if (loggingLevel > MAX_LOGGING_LEVEL) loggingLevel = MAX_LOGGING_LEVEL;

@@ -46,26 +46,27 @@ public:
   virtual bool identify(DTA_DEVICE_INFO& disk_info);
 
 
-
-  DtaDevLinuxSata(int _fd)
+  DtaDevLinuxSata(OSDEVICEHANDLE _fd)
     : DtaDevLinuxScsi(_fd)
   {}
 
+  static
+  DtaDevLinuxSata * getDtaDevLinuxSata(const char * devref, DTA_DEVICE_INFO & device_info);
 
   static
-  bool identifyUsingATAIdentifyDevice(int fd,
+  bool identifyUsingATAIdentifyDevice(OSDEVICEHANDLE osDeviceHandle,
                                       InterfaceDeviceID & interfaceDeviceIdentification,
                                       DTA_DEVICE_INFO & disk_info,
                                       dictionary ** pIdentifyCharacteristics);
 
 private:
   static
-  int PerformATAPassThroughCommand(int fd,
+  int PerformATAPassThroughCommand(OSDEVICEHANDLE osDeviceHandle,
                                    int cmd, int securityProtocol, int comID,
                                    void * buffer, unsigned int & bufferlen);
 
   static
-  int identifyDevice_SAT( int fd, void * buffer , unsigned int & dataLength);
+  int identifyDevice_SAT( OSDEVICEHANDLE osDeviceHandle, void * buffer , unsigned int & dataLength);
 
   static
   dictionary *

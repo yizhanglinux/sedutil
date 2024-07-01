@@ -22,8 +22,6 @@
 #if !defined(__DTASTRUCTURES_H_INCLUDED__)
 #define __DTASTRUCTURES_H_INCLUDED__
 
-#include <sys/types.h>
-
 #pragma pack(push)
 #pragma pack(1)
 
@@ -59,6 +57,20 @@ typedef struct _IDENTIFY_RESPONSE {
   uint8_t ignored9[96];        //words 206-254
   uint8_t integrityWord[2];    //word 255
 } IDENTIFY_RESPONSE;
+
+typedef struct _UASP_INQUIRY_RESPONSE {
+    uint8_t fill1[20];
+    char ProductSerial[20];
+    uint8_t fill2[6];
+    char ProductRev[8];
+    char ProductID[40];
+} UASP_INQUIRY_RESPONSE;
+
+typedef struct _SCSI_INQUIRY_RESPONSE {
+    uint8_t fill1[16];
+    char ProductID[16];
+    char ProductRev[4];
+} SCSI_INQUIRY_RESPONSE;
 
 #define FC_TPER		   0x0001
 #define FC_LOCKING     0x0002
@@ -454,6 +466,7 @@ typedef struct _DTA_DataSubPacketHeader {
   uint16_t kind;
   uint32_t length;
 } DTA_DataSubPacketHeader;
+
 /** header of a response */
 typedef struct _DTA_Header {
   DTA_ComPacketHeader cp;
@@ -478,6 +491,20 @@ typedef enum _DTA_DEVICE_TYPE {
   DEVICE_TYPE_SATA = DEVICE_TYPE_USB,  // Just couldn't take it any longer
   DEVICE_TYPE_OTHER,
 } DTA_DEVICE_TYPE;
+
+static inline
+const char * DtaDevTypeName(DTA_DEVICE_TYPE type)
+{
+  switch(type){
+  case DEVICE_TYPE_ATA: return "ATA";
+  case DEVICE_TYPE_SCSI: return "SCSI";
+  case DEVICE_TYPE_NVME: return "NVME";
+  case DEVICE_TYPE_SAS: return "SAS";
+  case DEVICE_TYPE_USB: return "USB";
+  case DEVICE_TYPE_OTHER: return "OTHER";
+  default: return "<unrecognized device type>";
+  }
+}
 
 /** structure to store Disk information. */
 typedef struct _DTA_DEVICE_INFO {
@@ -597,19 +624,6 @@ typedef struct _DTA_DEVICE_INFO {
   uint32_t Unused_Key_Count;
   uint32_t Max_Range_Per_NS;
 
-typedef struct _UASP_INQUIRY_RESPONSE {
-	uint8_t fill1[20];
-	char ProductSerial[20];
-	uint8_t fill2[6];
-	char ProductRev[8];
-	char ProductID[40];
-} UASP_INQUIRY_RESPONSE;
-
-typedef struct _SCSI_INQUIRY_RESPONSE {
-	uint8_t fill1[16];
-	char ProductID[16];
-	char ProductRev[4];
-} SCSI_INQUIRY_RESPONSE;
 
   // IDENTIFY information from SCSI INQUIRY and/or ATA IDENTIFY DEVICE
   // and other OS-specific sources
@@ -618,7 +632,8 @@ typedef struct _SCSI_INQUIRY_RESPONSE {
 
   DTA_DEVICE_TYPE devType;
 
-  uint8_t serialNum[sizeof_field(IDENTIFY_RESPONSE,serialNumber)];
+//  uint8_t serialNum[sizeof_field(IDENTIFY_RESPONSE,serialNumber)];
+  uint8_t serialNum[40];  // Some synthesized serial numbers (e.g. VMWare) are even bigger
   uint8_t serialNumNull;  // make serialNum a cstring
 
   uint8_t firmwareRev[sizeof_field(IDENTIFY_RESPONSE,firmwareRevision)];
@@ -656,9 +671,9 @@ typedef struct _SCSI_INQUIRY_RESPONSE {
  *
  *   Although the bitfields below look nice and do an excellent job of documenting
  *   what the Scsi standards specify, the C/C++ standards sadly do not specify the
- *   order of bitfields within compilation units, that is, the bytes in which they
- *   lie.  (The author of this comment has been bitten by assuming that this would
- *   "just work" and even tried the reversed order.  For instance, the longer
+ *   order of bitfields within compilation units, that is, within the bytes in which
+ *   they lie.  (The author of this comment has been bitten by assuming that this
+ *   would "just work" and even tried the reversed order.  For instance, the longer
  *   constructor for CScsiCmdATAPassThrough_12 is completely unreliable.
  *   Never mind x86 vs arm.)
  *
@@ -682,9 +697,6 @@ public:
   uint16_t m_AllocationLength;                     //  3
   uint8_t  m_Control;                              //  5
 } ;                                  //  6
-
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
-#else
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -729,7 +741,7 @@ public:
   uint8_t        m_ProductId[16];                        // 16
   uint8_t        m_ProductRevisionLevel[4];              // 32
 };                                  // 36
-#endif
+
 
 ////////////////////////////////////////////////////////////////////////////////
 class CScsiCmdSecurityProtocolIn
@@ -803,8 +815,27 @@ public:
   uint8_t        m_Control;                  // 11
 
   CScsiCmdATAPassThrough_12() :
-    m_Opcode           ( OPCODE   ) //       //  0
+      m_Opcode           ( OPCODE   ), //       //  0
+      m_Obsolete         (0         ), // : 3   //  1
+      m_Protocol         (0         ), // : 4
+      m_Reserved_1       (0         ), // : 1
+      m_Offline          (0         ), // : 2   //  2
+      m_CkCond           (0         ), // : 1
+      m_TType            (0         ), // : 1
+      m_TDir             (0         ), // : 1
+      m_ByteBlock        (0         ), // : 1
+      m_TLength          (0         ), // : 2    10b=>transfer length in Count
+      m_Features         (0         ), //       //  3
+      m_Count            (0         ), //       //  4
+      m_LBA_Low          (0         ), //       //  5
+      m_LBA_Mid          (0         ), //       //  6
+      m_LBA_High         (0         ), //       //  7
+      m_Device           (0         ), //       //  8
+      m_Command          (0         ), //       //  9
+      m_Reserved_2       (0         ), //       // 10
+      m_Control          (0         )  //       // 11
   {};
+  // UNRELIABLE -- see comments above
   CScsiCmdATAPassThrough_12(uint8_t protocol, uint8_t command,
                             uint8_t features=0,
                             uint8_t count=1,

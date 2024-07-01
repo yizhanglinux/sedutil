@@ -21,30 +21,11 @@ along with sedutil.  If not, see <http://www.gnu.org/licenses/>.
  * also supports the Opal 1.0 SSC
  */
 
-#if defined(__unix__) || defined(linux) || defined(__linux__) || defined(__gnu_linux__) || defined(__APPLE__)
-#else // Windows
-#pragma warning(disable: 4224) //C2224: conversion from int to char , possible loss of data
-#pragma warning(disable: 4244) //C4244: 'argument' : conversion from 'uint16_t' to 'uint8_t', possible loss of data
-#pragma warning(disable: 4996)
-#pragma comment(lib, "rpcrt4.lib")  // UuidCreate - Minimum supported OS Win 2000
-#endif
 
 #include "os.h"
-#include <log/log.h>
 
-#if defined(__unix__) || defined(linux) || defined(__linux__) || defined(__gnu_linux__) || defined(__APPLE__)
-#else // Windows
-#include <Windows.h>
-#include "compressapi-8.1.h"
-#include "sedsize.h" 
-#endif
-
-#include <stdio.h>
 #include <iostream>
 #include <fstream>
-#include <iomanip>
-
-#include <signal.h>
 
 #include "DtaDevOpal.h"
 #include "DtaCommand.h"

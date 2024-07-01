@@ -18,7 +18,6 @@
 
    * C:E********************************************************************** */
 #pragma once
-#include "os.h"
 #include "log.h"
 #include "DtaDev.h"
 #include "DtaDevOSDrive.h"
@@ -38,7 +37,7 @@ public:
    * @param genericIfNotTPer   if true, store an instance of DtaDevGeneric for non-TPers;
    *                          if false, store NULL for non-TPers
    */
-  static uint8_t getDtaDevOS(const char * devref, 
+  static uint8_t getDtaDevOS(const char * devref,
                              DtaDevOS * * pdev,
                              bool genericIfNotTPer=false);
 
@@ -78,15 +77,11 @@ protected:
                                DTA_DEVICE_INFO & di,
                                bool genericIfNotTPer=false);
 
-  /** OS specific command to Wait for specified number of milliseconds
-   * @param ms  number of milliseconds to wait
-   */
-  void osmsSleep(uint32_t ms);
 
   /** OS specific routine to send an ATA identify to the device */
   bool identify(DTA_DEVICE_INFO& disk_info);
-    
-  
+
+
     /** return drive size in bytes */
   const unsigned long long getSize();
 
@@ -99,7 +94,7 @@ private:
   //   : drive(NULL)
   // { dev=NULL;
   //   isOpen=FALSE;
-  //   bzero(&disk_info, sizeof(disk_info));
+  //   memset(&disk_info, 0, sizeof(disk_info));
   //   assert(FALSE);  // ***TODO*** this is never used
   // };
 };

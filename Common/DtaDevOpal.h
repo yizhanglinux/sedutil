@@ -425,10 +425,8 @@ protected:
   OPAL_UID getUSERUID(uint8_t idx) {
     return usermodeON ? (OPAL_UID)(OPAL_USER1_UID + idx) : OPAL_ADMIN1_UID;
   };
-  bool gettranslate() { return translate_req; };
-  bool getactivateskip() { return skip_activate; }
-  uint8_t adminEnabledTab[16];
-  uint8_t userEnabledTab[16];
+  uint8_t adminEnabledTab[16] = { 0 };
+  uint8_t userEnabledTab[16] =  { 0 };
 private:
   uint8_t __setLockingRange(uint8_t lockingrange, uint8_t lockingstate, std::function<uint8_t(void)>startSessionFn);
 };

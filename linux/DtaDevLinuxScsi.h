@@ -22,6 +22,7 @@
 #include "DtaDevLinuxDrive.h"
 #include <string>
 #include <map>
+#include "SCSICmds_INQUIRY_Definitions.h"
 
 typedef std::map<std::string,std::string>dictionary;
 typedef std::map<std::string,std::string>::iterator dictionary_iterator;
@@ -31,6 +32,8 @@ typedef std::map<std::string,std::string>::iterator dictionary_iterator;
  */
 class DtaDevLinuxScsi: public DtaDevLinuxDrive {
 public:
+    using DtaDevLinuxDrive::DtaDevLinuxDrive;
+
 
   /** Factory function to look at the devref to filter whether it could be an instance
    *
@@ -64,16 +67,11 @@ public:
    */
   virtual bool identify(DTA_DEVICE_INFO& disk_info);
 
-  DtaDevLinuxScsi(int _fd)
-    : DtaDevLinuxDrive(_fd)
-  {}
-
-  ~DtaDevLinuxScsi(){}
-
   static
-  bool identifyUsingSCSIInquiry(int fd,
+  bool identifyUsingSCSIInquiry(OSDEVICEHANDLE osDeviceHandle,
                                 InterfaceDeviceID & interfaceDeviceIdentification,
                                 DTA_DEVICE_INFO & disk_info);
+
 
 protected:
 
@@ -108,7 +106,7 @@ protected:
                          unsigned char * sense, unsigned char& senselen,
                          unsigned char * pmasked_status=NULL)
   {
-    return DtaDevLinuxScsi::PerformSCSICommand(this->fd,
+    return DtaDevLinuxScsi::PerformSCSICommand(this->osDeviceHandle,
                                                dxfer_direction,
                                                cdb, cdb_len,
                                                buffer, bufferlen,
@@ -120,7 +118,7 @@ protected:
 protected:
   /** Perform a SCSI command using the SCSI generic interface. (static class function)
    *
-   * @param fd              file descriptor of already-opened raw device file
+   * @param osDeviceHandle              file descriptor of already-opened raw device file
    * @param dxfer_direction direction of transfer PSC_FROM/TO_DEV
    * @param cdb             SCSI command data buffer
    * @param cdb_len         length of SCSI command data buffer (often 12)
@@ -133,7 +131,7 @@ protected:
    *
    * Returns the result of the ioctl call, as well as possibly setting *pmasked_status
    */
-  static int PerformSCSICommand(int fd,
+  static int PerformSCSICommand(OSDEVICEHANDLE osDeviceHandle,
                                 int dxfer_direction,
                                 uint8_t * cdb,   unsigned char cdb_len,
                                 void * buffer,   unsigned int& bufferlen,
@@ -143,16 +141,16 @@ protected:
 
 private:
   static
-  bool deviceIsStandardSCSI(int fd,
+  bool deviceIsStandardSCSI(OSDEVICEHANDLE osDeviceHandle,
                             InterfaceDeviceID & interfaceDeviceIdentification,
                             DTA_DEVICE_INFO & disk_info);
 
   static
-  int inquiryStandardDataAll_SCSI(int fd, void * inquiryResponse, unsigned int & dataSize );
+  int inquiryStandardDataAll_SCSI(OSDEVICEHANDLE osDeviceHandle, void * inquiryResponse, unsigned int & dataSize );
 
 
   static
-  int __inquiry(int fd, uint8_t evpd, uint8_t page_code, void * buffer, unsigned int & dataSize);
+  int __inquiry(OSDEVICEHANDLE osDeviceHandle, uint8_t evpd, uint8_t page_code, void * buffer, unsigned int & dataSize);
 
 
   static
@@ -161,9 +159,48 @@ private:
                                       InterfaceDeviceID & interfaceDeviceIdentification,
                                       DTA_DEVICE_INFO & di);
 
+
+  static
+  bool deviceIsPage00SCSI(OSDEVICEHANDLE osDeviceHandle,
+                          bool & deviceSupportsPage80,
+                          bool & deviceSupportsPage89);
+
+
+  static
+  int inquiryPage00_SCSI(OSDEVICEHANDLE osDeviceHandle, void * buffer, unsigned int & dataSize );
+
+
+  static
+  dictionary *
+  parseInquiryPage00Response(const unsigned char * response,
+                             bool & deviceSupportsPage00,
+                             bool & deviceSupportsPage80,
+                             bool & deviceSupportsPage83,
+                             bool & deviceSupportsPage89);
+
+  static
+  bool deviceIsPage80SCSI(OSDEVICEHANDLE osDeviceHandle,
+                          const InterfaceDeviceID & interfaceDeviceIdentification,
+                          DTA_DEVICE_INFO &di) ;
+
+
+  static
+  int inquiryPage80_SCSI(OSDEVICEHANDLE osDeviceHandle, void * buffer, unsigned int & dataSize );
+
+
+
+
+
+  static
+  dictionary * parseInquiryPage80Response(const InterfaceDeviceID & interfaceDeviceIdentification,
+                                          const unsigned char * response,
+                                          DTA_DEVICE_INFO & di) ;
+
+
+  static
+  int __inquiry__EVPD(OSDEVICEHANDLE osDeviceHandle, uint8_t page_code, void * buffer, unsigned int & dataSize);
+
 };
-
-
 /*
  *  Status codes
  */

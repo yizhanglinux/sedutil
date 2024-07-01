@@ -69,7 +69,11 @@ public:
    * @param bytearray pointer to array for return data */
   void getBytes(uint32_t tokenNum, uint8_t bytearray[]);
 
-  DTA_Header h; /**< TCG Header fields of the response */
+    DTA_Header h = {
+        {0, {0}, 0, 0, 0      },  // compacket header
+        {0,   0, 0, 0, 0, 0, 0},  // packet header
+        {{0}, 0, 0            }   // subpacket header
+    }; /**< TCG Header fields of the response */
 
 private:
 

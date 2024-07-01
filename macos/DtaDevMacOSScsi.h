@@ -60,10 +60,16 @@ public:
    */
   virtual bool identify(DTA_DEVICE_INFO& disk_info);
 
+  virtual uint8_t discovery0(DTA_DEVICE_INFO & disk_info);
+    
+  DtaDevMacOSScsi(OSDEVICEHANDLE _osDeviceHandle)
+      : DtaDevMacOSDrive(_osDeviceHandle)
+    {}
+
   ~DtaDevMacOSScsi(){}
 
   static
-  bool identifyUsingSCSIInquiry(io_connect_t connection,
+  bool identifyUsingSCSIInquiry(OSDEVICEHANDLE osDeviceHandle,
                                 InterfaceDeviceID & interfaceDeviceIdentification,
                                 DTA_DEVICE_INFO & disk_info);
 
@@ -99,7 +105,7 @@ protected:
                          unsigned char * sense, unsigned char& senselen,
                          unsigned char * pmasked_status=NULL)
   {
-    return DtaDevMacOSScsi::PerformSCSICommand(this->connection,
+    return DtaDevMacOSScsi::PerformSCSICommand(osDeviceHandle,
                                                dxfer_direction,
                                                cdb, cdb_len,
                                                buffer, bufferlen,
@@ -110,7 +116,7 @@ protected:
 protected:
   /** Perform a SCSI command using the SCSI generic interface. (static class function)
    *
-   * @param connection            io_connect_t connection of already-opened raw device file
+   * @param osDeviceHandle            OSDEVICEHANDLE osDeviceHandle of already-opened raw device file
    * @param dxfer_direction direction of transfer PSC_FROM/TO_DEV
    * @param cdb             SCSI command data buffer
    * @param cdb_len         length of SCSI command data buffer (often 12)
@@ -123,7 +129,7 @@ protected:
    *
    * Returns the result of the ioctl call, as well as possibly setting *pmasked_status
    */
-  static int PerformSCSICommand(io_connect_t connection,
+  static int PerformSCSICommand(OSDEVICEHANDLE osDeviceHandle,
                                 int dxfer_direction,
                                 uint8_t * cdb,   unsigned char cdb_len,
                                 void * buffer,   unsigned int& bufferlen,
@@ -133,16 +139,16 @@ protected:
 
 private:
   static
-  bool deviceIsStandardSCSI(io_connect_t connection,
+  bool deviceIsStandardSCSI(OSDEVICEHANDLE osDeviceHandle,
                             InterfaceDeviceID & interfaceDeviceIdentification,
                             DTA_DEVICE_INFO & disk_info);
 
   static
-  int inquiryStandardDataAll_SCSI(io_connect_t connection, void * inquiryResponse, unsigned int & dataSize );
+  int inquiryStandardDataAll_SCSI(OSDEVICEHANDLE osDeviceHandle, void * inquiryResponse, unsigned int & dataSize );
 
 
   static
-  int __inquiry(io_connect_t connection, uint8_t evpd, uint8_t page_code, void * buffer, unsigned int & dataSize);
+  int __inquiry(OSDEVICEHANDLE osDeviceHandle, uint8_t evpd, uint8_t page_code, void * buffer, unsigned int & dataSize);
 
 
   static

@@ -27,7 +27,8 @@ using namespace std;
 uint8_t UnlockSEDs(char * password) {
 /* Loop through drives */
 
-  for (string & device:DtaDevOSDrive::enumerateDtaDevOSDriveDevRefs()) {
+  bool accessDenied=false;
+  for (string & device:DtaDevOSDrive::enumerateDtaDevOSDriveDevRefs(accessDenied)) {
 
     DtaDevOS * d=NULL;
     const char * devref = (const char *)device.c_str();
@@ -63,6 +64,10 @@ uint8_t UnlockSEDs(char * password) {
 
     }
   }
-
-  return 0x00;
+  if (accessDenied) {
+    LOG(E)  << "You do not have permission to access some raw device(s) in write mode";
+    LOG(E)  << "Perhaps you might try sudo to run as root";
+  }
+      
+  return accessDenied ? 0xff : 0x00;
 }

@@ -33,7 +33,6 @@ using namespace std;
 class DtaCommand;
 class DtaSession;
 
-#define  __unimplemented__ {throw __PRETTY_FUNCTION__;}
 
 /** Base class for a disk^H^H^H^H device.
  * This is a virtual base class defining the minimum functionality of device
@@ -124,10 +123,6 @@ public:
    */
   virtual uint8_t sendCmd(ATACOMMAND cmd, uint8_t protocol, uint16_t comID,
                           void * buffer, unsigned int bufferlen) = 0;
-  /** OS specific command to Wait for specified number of milliseconds
-   * @param milliseconds  number of milliseconds to wait
-   */
-  virtual void osmsSleep(uint32_t milliseconds) = 0;
   /** OS specific routine to identify the device and fill out the device information struct*/
   virtual bool identify(DTA_DEVICE_INFO& disk_info) = 0;
   /** OS specific routine to get size of the device */
@@ -549,8 +544,6 @@ public:
   bool skip_activate = FALSE;
   sedutiloutput output_format; /** standard, readable, JSON */  // TODO: really an attribute of the program, not the TPer
 
-  char LicenseLevel[32];  // TODO: see comment at the top???
-
 
 protected:
   const char * dev;   /**< character string representing the device in the OS lexicon */
@@ -605,7 +598,7 @@ protected:
 
 
 
-  uint8_t discovery0buffer[MIN_BUFFER_LENGTH + IO_BUFFER_ALIGNMENT] ; // NG->__attribute__((aligned(16)));
+  uint8_t discovery0buffer[MIN_BUFFER_LENGTH + IO_BUFFER_ALIGNMENT] = { 0 }; // NG->__attribute__((aligned(16)));
 
   uint32_t Tper_sz_MaxComPacketSize = 2048;
   uint32_t Tper_sz_MaxResponseComPacketSize = 2048;
@@ -617,20 +610,21 @@ protected:
   uint32_t Host_sz_MaxIndTokenSize = 1992 ;
 };
 
-
-static inline bool __is_all_NULs(const uint8_t * b, const unsigned int n) {
-  for (const uint8_t * e = b + n; b<e; b++) {
-    if ( 0  == *b) continue;
+template <typename T>
+static inline bool __is_all_NULs(const T * b, const size_t n) {
+  for (const T * e = b + n; b<e; b++) {
+    if ( ((T)0)  == *b) continue;
     return false;
   }
   return true;
 }
 
 
-static inline bool __is_all_zeroes(const uint8_t * b, const unsigned int n) {
-  for (const uint8_t * e = b + n; b<e; b++) {
-    if ( 0  == *b) continue;
-    if ('0' == *b) continue;
+template <typename T>
+static inline bool __is_all_zeroes(const T * b, const size_t n) {
+  for (const T * e = b + n; b<e; b++) {
+    if (((T) 0 ) == *b) continue;
+    if (((T)'0') == *b) continue;
     return false;
   }
   return true;
@@ -658,3 +652,10 @@ static inline vector<uint8_t> vUID(OPAL_UID uid)
   set8(v,OPALUID[uid]);
   return v;
 }
+
+
+/** iomanip commands to hexdump a field */
+#include <iomanip>
+#define HEXON(x) "0x" << std::hex << std::setw(x) << std::setfill('0')
+/** iomanip command to return to standard ascii output */
+#define HEXOFF std::dec << std::setw(0) << std::setfill(' ')
