@@ -86,7 +86,7 @@ OSDEVICEHANDLE DtaDevMacOSDrive::openAndCheckDeviceHandle(const char * devref, b
 namespace fs = std::__fs::filesystem;
 #undef USEDRIVERUSPERCLASS
 #define USEBLOCKSTORAGEDEVICE
-OSDEVICEHANDLE DtaDevMacOSDrive::openDeviceHandle(const char * devref, bool& /* accessDenied */)
+OSDEVICEHANDLE DtaDevMacOSDrive::openDeviceHandle(const char * devref, bool& accessDenied)
 {
     LOG(D4) << "openDeviceHandle(\"" << devref << "\", _)";
     std::string bsdName = fs::path(devref).stem();
@@ -136,11 +136,16 @@ OSDEVICEHANDLE DtaDevMacOSDrive::openDeviceHandle(const char * devref, bool& /* 
     if (!IOObjectConformsTo(possibleTPer, kDriverClass)) {
         LOG(D4) << "parent of block storage device service is not TPer Driver instance";
     } else if (((kernResult = OpenUserClient(possibleTPer, &connection)) != kIOReturnSuccess || connection == IO_OBJECT_NULL)) {
-       LOG(E) << "Failed to open user client -- error=" << HEXON(8) << kernResult;
+        if (kernResult == (kern_return_t(0xe00002c2))) {
+          LOG(D4) << "OpenUserClient denied access";
+          accessDenied = true;
+        } else {
+          LOG(E) << "Failed to open user client -- error=" << HEXON(8) << kernResult;
+        }
     } else {
-       LOG(D4) << "Device service "              << HEXOFF << blockStorageDeviceService << "=" << HEXON(4) << blockStorageDeviceService
-               << " connected to TPer instance " << HEXOFF << possibleTPer              << "=" << HEXON(4) << possibleTPer
-               << " opened user client "         << HEXOFF << connection                << "=" << HEXON(4) << connection;
+      LOG(D4) << "Device service "              << HEXOFF << blockStorageDeviceService << "=" << HEXON(4) << blockStorageDeviceService
+              << " connected to TPer instance " << HEXOFF << possibleTPer              << "=" << HEXON(4) << possibleTPer
+              << " opened user client "         << HEXOFF << connection                << "=" << HEXON(4) << connection;
     }
     IOObjectRelease(possibleTPer);
     return handle(blockStorageDeviceService,connection);
@@ -180,8 +185,8 @@ std::vector<std::string> DtaDevMacOSDrive::enumerateDtaDevMacOSDriveDevRefs(bool
         if (isDtaDevOSDriveDevRef(devref, accessDeniedThisTime))
             devrefs.push_back(str_devref);
         else if (accessDeniedThisTime && !accessDenied) {
-            LOG(E) << "You do not have permission to access the raw disk " << devref << " in write mode";
-            LOG(E) << "Perhaps you might try sudo to run as root";
+//            LOG(E) << "You do not have permission to access the raw disk " << devref << " in write mode";
+//            LOG(E) << "Perhaps you might try sudo to run as root";
             accessDenied=true;
         }
     }
