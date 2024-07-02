@@ -266,10 +266,11 @@ DtaDevMacOSDrive * DtaDevMacOSDrive::getDtaDevMacOSDrive(const char * devref,
     if (!deviceNeedsSpecialAction(interfaceDeviceIdentification,avoidSlowSASTimeout)) {
       trySubclass(Scsi);
     }
+    trySubclass(BlockStorageDevice);   // TODO: hack
     break;
 
   case DEVICE_TYPE_NVME:  // NVMe
-    // TODO: Just hack by using Scsi for now.  BlockStorageDevice?
+    // TODO: Just hack by using BlockStorageDevice for now?
     if (deviceNeedsSpecialAction(interfaceDeviceIdentification, acceptPseudoDeviceImmediately)) {
       trySubclass(BlockStorageDevice);   // TODO: hack
       break;

@@ -52,8 +52,10 @@ DtaDevMacOSScsi::getDtaDevMacOSScsi(const char * devref, DTA_DEVICE_INFO & devic
 
   bool accessDenied=false;
   OSDEVICEHANDLE osDeviceHandle = openAndCheckDeviceHandle(devref, accessDenied);
-  if (osDeviceHandle==INVALID_HANDLE_VALUE || accessDenied)
-    return NULL;
+  if (osDeviceHandle==INVALID_HANDLE_VALUE || accessDenied || IO_OBJECT_NULL==handleConnection(osDeviceHandle)) {
+    if (osDeviceHandle!=INVALID_HANDLE_VALUE)  closeDeviceHandle(osDeviceHandle);
+   return NULL;
+  }
 
   LOG(D4) << "Success opening device " << devref << " as file handle " << HEXON(4) << (size_t) osDeviceHandle;
 
@@ -78,7 +80,6 @@ bool DtaDevMacOSScsi::identifyUsingSCSIInquiry(OSDEVICEHANDLE osDeviceHandle,
                                                InterfaceDeviceID & interfaceDeviceIdentification,
                                                DTA_DEVICE_INFO & disk_info) {
   if (!deviceIsStandardSCSI(osDeviceHandle, interfaceDeviceIdentification, disk_info)) {
-    LOG(E) << " Device is not Standard SCSI -- not for this driver";
     return false;
   }
 
@@ -419,13 +420,13 @@ int DtaDevMacOSScsi::PerformSCSICommand(OSDEVICEHANDLE osDeviceHandle,
 
 
 
-    LOG(D4) << "PerformSCSICommand kernResult=" << kernResult ;
+    LOG(D4) << "PerformSCSICommand kernResult=" << HEXON(8) << kernResult ;
     IFLOG(D4) {
       if (kernResult < 0) {
-        LOG(D4) << "cdb after returned " << kernResult << ")" ;
+        LOG(D4) << "cdb after returned " << HEXON(8) << kernResult << ":";
         DtaHexDump(cdb, cdb_len);
       } else {
-        LOG(D4) << "PerformSCSICommand buffer after kernResult " << kernResult ;
+        LOG(D4) << "PerformSCSICommand buffer after kernResult " << HEXON(8) << kernResult ;
         DtaHexDump(buffer, bufferlen);
       }
     }

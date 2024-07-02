@@ -45,10 +45,12 @@ DtaDevMacOSSata::getDtaDevMacOSSata(const char* devref, DTA_DEVICE_INFO& di) {
 
   bool accessDenied=false;
   OSDEVICEHANDLE osDeviceHandle = openAndCheckDeviceHandle(devref, accessDenied);
-    if (osDeviceHandle==INVALID_HANDLE_VALUE || accessDenied)
-        return NULL;
+  if (osDeviceHandle==INVALID_HANDLE_VALUE || accessDenied || IO_OBJECT_NULL==handleConnection(osDeviceHandle)) {
+    if (osDeviceHandle!=INVALID_HANDLE_VALUE)  closeDeviceHandle(osDeviceHandle);
+   return NULL;
+  }
 
-    LOG(D4) << "Success opening device " << devref << " as file handle " << HEXON(4) << (size_t)osDeviceHandle;
+  LOG(D4) << "Success opening device " << devref << " as file handle " << HEXON(4) << (size_t)osDeviceHandle;
 
 
     InterfaceDeviceID interfaceDeviceIdentification;
@@ -232,7 +234,7 @@ Code	Name
                                                  sense, senselen,
                                                  &masked_status,
                                                  timeout);
-  if (result<0) {
+  if (result!=0) {
     LOG(D4) << "PerformSCSICommand returned " << result;
     LOG(D4) << "sense after ";
     IFLOG(D4) DtaHexDump(&sense, senselen);
