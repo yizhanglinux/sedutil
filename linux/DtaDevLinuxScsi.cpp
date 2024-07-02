@@ -273,7 +273,10 @@ bool DtaDevLinuxScsi::deviceIsStandardSCSI(OSDEVICEHANDLE osDeviceHandle, Interf
 
 int DtaDevLinuxScsi::inquiryStandardDataAll_SCSI(OSDEVICEHANDLE osDeviceHandle, void * inquiryResponse, unsigned int & dataSize )
 {
-  return __inquiry( osDeviceHandle, 0x00, 0x00, inquiryResponse, dataSize);
+  LOG(D4) << "DtaDevLinuxScsi::inquiryStandardDataAll_SCSI: calling __inquiry ...";
+  int result = __inquiry( osDeviceHandle, 0x00, 0x00, inquiryResponse, dataSize);
+  LOG(D4) << "DtaDevLinuxScsi::inquiryStandardDataAll_SCSI{ __inquiry returned " << result;
+  return result;
 }
 
 
@@ -296,12 +299,15 @@ int DtaDevLinuxScsi::__inquiry(OSDEVICEHANDLE osDeviceHandle, uint8_t evpd, uint
   unsigned char sense[32];
   unsigned char senselen=sizeof(sense);
   unsigned char masked_status;
-  return PerformSCSICommand(osDeviceHandle,
+  LOG(D4) << "DtaDevLinuxScsi::__inquiry: calling PerformSCSICommand ...";
+  int result = PerformSCSICommand(osDeviceHandle,
                             PSC_FROM_DEV,
                             (uint8_t *)&cdb, sizeof(cdb),
                             inquiryResponse, dataSize,
                             sense, senselen,
                             &masked_status);
+  LOG(D4) << "DtaDevLinuxScsi::__inquiry: PerformSCSICommand returned " << result;
+  return result;
 }
 
 dictionary *
@@ -384,7 +390,10 @@ bool DtaDevLinuxScsi::deviceIsPage00SCSI(OSDEVICEHANDLE osDeviceHandle,
 
 int DtaDevLinuxScsi::inquiryPage00_SCSI(OSDEVICEHANDLE osDeviceHandle, void * buffer, unsigned int & dataSize )
 {
-  return __inquiry__EVPD(osDeviceHandle, kINQUIRY_Page00_PageCode, buffer, dataSize);
+  LOG(D4) << "DtaDevLinuxScsi::inquiryPage00_SCSI calling: __inquiry_EVPD ...";
+  int result = __inquiry__EVPD(osDeviceHandle, kINQUIRY_Page00_PageCode, buffer, dataSize);
+  LOG(D4) << "DtaDevLinuxScsi::inquiryPage00_SCSI: __inquiry_EVPD returned " << result;
+  return result;
 }
 
 dictionary * DtaDevLinuxScsi::parseInquiryPage00Response(const unsigned char * response,
@@ -467,14 +476,20 @@ bool DtaDevLinuxScsi::deviceIsPage80SCSI(OSDEVICEHANDLE osDeviceHandle, const In
 
 int DtaDevLinuxScsi::inquiryPage80_SCSI(OSDEVICEHANDLE osDeviceHandle, void * buffer, unsigned int & dataSize)
 {
-  return __inquiry__EVPD(osDeviceHandle, kINQUIRY_Page80_PageCode, buffer, dataSize);
+  LOG(D4) << "DtaDevLinuxScsi::inquiryPage80_SCSI: calling __inquiry_EVPD ...";
+  int result = __inquiry__EVPD(osDeviceHandle, kINQUIRY_Page80_PageCode, buffer, dataSize);
+  LOG(D4) << "DtaDevLinuxScsi::inquiryPage80_SCSI: __inquiry_EVPD returned " << result;
+  return result;
 }
 
 
 int DtaDevLinuxScsi::__inquiry__EVPD(OSDEVICEHANDLE osDeviceHandle, uint8_t page_code,
                                      void * inquiryResponse, unsigned int & dataSize )
 {
-  return __inquiry(osDeviceHandle, 0x01, page_code, inquiryResponse, dataSize);
+  LOG(D4) << "DtaDevLinuxScsi::__inquiry__EVPD: calling __inquiry ...";
+  int result = __inquiry(osDeviceHandle, 0x01, page_code, inquiryResponse, dataSize);
+  LOG(D4) << "DtaDevLinuxScsi::__inquiry__EVPD: __inquiry returned " << result;
+  return result;
 }
 
 
@@ -584,17 +599,19 @@ uint8_t DtaDevLinuxScsi::sendCmd(ATACOMMAND cmd, uint8_t protocol, uint16_t comI
 
   unsigned char masked_status=GOOD;
 
+  LOG(D4) << "DtaDevLinuxScsi::sendCmd: calling PerformSCSICommand ...";
   int result=PerformSCSICommand(dxfer_direction,
                                 cdb, sizeof(cdb),
                                 buffer, transferlen,
                                 sense, senselen,
                                 &masked_status);
+  LOG(D4) << "DtaDevLinuxScsi::sendCmd: PerformSCSICommand returned " << result;
   if (result < 0) {
     LOG(D4) << "cdb after ";
     IFLOG(D4) DtaHexDump(cdb, sizeof (cdb));
     LOG(D4) << "sense after ";
     IFLOG(D4) DtaHexDump(sense, senselen);
-    LOG(D4) << "Error result=" << result << " from PerformSCSICommand "
+    LOG(D4) << "Error result=" << HEXON(2) << result << " from PerformSCSICommand "
             << " -- returning 0xff from DtaDevLinuxScsi::sendCmd";
     return 0xff;
   }

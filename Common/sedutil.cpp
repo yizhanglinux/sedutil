@@ -238,6 +238,7 @@ int main(int argc, char * argv[])
   case sedutiloption::query:
     LOG(D) << "Performing diskquery() on " << argv[opts.device];
     d->puke();
+    LOG(D4) << "After d->puke() on " << argv[opts.device] << " ... returning 0 from main()";
     return 0;
     break;
   case sedutiloption::scan:

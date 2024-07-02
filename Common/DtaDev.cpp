@@ -220,7 +220,7 @@ int DtaDev::TperReset()
 
 void DtaDev::puke()
 {
-  LOG(D2) << "Entering DtaDev::puke()";
+  LOG(D2) << "Entering DtaDev::puke";
   /* IDENTIFY */
   const char * devType =
     disk_info.devType == DEVICE_TYPE_ATA  ? " ATA "
@@ -379,10 +379,12 @@ void DtaDev::puke()
   }
 
 
-
   if (disk_info.Unknown)
     cout << "**** " << (uint16_t)disk_info.Unknown << " **** Unknown function codes IGNORED " << std::endl;
+
+  LOG(D2) << "Exiting DtaDev::puke";
 }
+
 
 uint8_t DtaDev::WithSession(std::function<uint8_t(void)>startSessionFn,
                             std::function<uint8_t(void)>sessionBodyFn) {
@@ -403,6 +405,7 @@ uint8_t DtaDev::WithSession(std::function<uint8_t(void)>startSessionFn,
   return lastRC;
 
 }
+
 
 uint8_t DtaDev::WithSessionCommand(std::function<uint8_t(void)>startSessionFn,
                                    std::function<void(DtaCommand * command)>commandWriterFn) {
