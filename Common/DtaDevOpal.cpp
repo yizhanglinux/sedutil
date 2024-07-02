@@ -3094,9 +3094,11 @@ uint8_t DtaDevOpal::properties()
 // fill  property
 void DtaDevOpal::fill_prop(uint8_t show)
 {
+  LOG(D4) << "Entering DtaDevOpal::fill_prop(" << std::boolalpha << show << ")";
   if (show) cout << endl << "TPer Properties: " << dev;
   uint8_t tper_flag;
   tper_flag = 1;
+  LOG(D4) << "Entering DtaDevOpal::fill_prop: propertiesResponse.getTokenCount()=" << propertiesResponse.getTokenCount();
   for (uint32_t i = 0; i < propertiesResponse.getTokenCount(); i++) {
     if (OPAL_TOKEN::STARTNAME == propertiesResponse.tokenIs(i)) {
       if (OPAL_TOKEN::DTA_TOKENID_BYTESTRING != propertiesResponse.tokenIs(i + 1))
@@ -3167,16 +3169,19 @@ void DtaDevOpal::fill_prop(uint8_t show)
   printf("Host_sz_MaxPacketSize=%ld\n", Host_sz_MaxPacketSize);
   printf("Host_sz_MaxIndTokenSize=%ld\n", Host_sz_MaxIndTokenSize);
 #endif
+  LOG(D4) << "Exiting DtaDevOpal::fill_prop";
 }
 
 
 void DtaDevOpal::puke()
 {
-  LOG(D1) << "Entering DtaDevOpal::puke() " << dev;
+  LOG(D1) << "Entering DtaDevOpal::puke(\"" << dev << "\")";
   DtaDevOS::puke();
+  LOG(D1) << "DtaDevOpal::puke -- Opal-specific section";
   if (disk_info.Properties) {
     fill_prop(TRUE); // fill and display Tper Host property
   } // diskinfo.propery
+  LOG(D1) << "Exiting DtaDevOpal::puke";
 }
 
 // adjust host property
@@ -3185,14 +3190,14 @@ void DtaDevOpal::puke()
 //act :2 : reset host property ; regardless if it has been adjust
 void DtaDevOpal::adj_host_prop(uint8_t act)
 {
-  LOG(D1) << "Enter adj_host_prop";
+  LOG(D1) << "Entering DtaDevOpal::adj_host_prop";
   //fill_prop(FALSE); // why there are two fill_property
   //printf("act =  %d\n", act);
 
   adj_host = act;
   properties();
   fill_prop(FALSE); // must re-stuff the host property because properties() only exchange property with Tper but not set host_sz_Maxxxxxxxx
-  LOG(D1) << "Exit adj_host_prop";
+  LOG(D1) << "Exiting DtaDevOpal::adj_host_prop";
 }
 
 uint8_t DtaDevOpal::objDump(char *sp, char * auth, char *pass,
