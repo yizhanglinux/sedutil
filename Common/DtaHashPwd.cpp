@@ -253,7 +253,7 @@ int Testsedutil(const PBKDF_TestTuple *testSet, unsigned int testSetSize)
     return pass;
 }
 
-int TestPBKDF2()
+uint8_t TestPBKDF2()
 {
     int pass = 1;
     // from draft-ietf-smime-password-03.txt, at http://www.imc.org/draft-ietf-smime-password

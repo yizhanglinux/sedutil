@@ -118,7 +118,7 @@ bool DtaDevOS::identify(DTA_DEVICE_INFO& disk_info)
 
 
 
-int  DtaDevOS::diskScan()
+uint8_t DtaDevOS::diskScan()
 {
   LOG(D1) << "Entering DtaDevOS:diskScan ";
 

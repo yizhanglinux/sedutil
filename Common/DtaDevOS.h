@@ -55,7 +55,7 @@ public:
                   void * buffer, unsigned int bufferlen);
 
   /** A static function to scan for supported drives */
-  static int diskScan();
+  static uint8_t diskScan();
 
   /** Short-circuit routine re-uses initialized drive and disk_info */
   DtaDevOS(const char * devref, DtaDevOSDrive * drv, DTA_DEVICE_INFO & di)
