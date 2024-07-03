@@ -47,6 +47,7 @@ DtaDev::DtaDev()
 }
 DtaDev::~DtaDev()
 {
+  LOG(D4) << "Destroying DtaDev";
 }
 
 uint8_t DtaDev::isRuby()

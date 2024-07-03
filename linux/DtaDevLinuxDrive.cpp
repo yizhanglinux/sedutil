@@ -69,7 +69,9 @@ OSDEVICEHANDLE DtaDevOSDrive::openDeviceHandle(const char* devref, bool& accessD
 }
 
 void DtaDevOSDrive::closeDeviceHandle(OSDEVICEHANDLE osDeviceHandle) {
+  LOG(D4) << "Entering DtaDevOSDrive::closeDeviceHandle";
   DtaDevLinuxDrive::closeDeviceHandle(osDeviceHandle);
+  LOG(D4) << "Exiting DtaDevOSDrive::closeDeviceHandle";
 }
 
 
@@ -137,7 +139,12 @@ OSDEVICEHANDLE DtaDevLinuxDrive::openDeviceHandle(const char* devref, bool & acc
 }
 
 void DtaDevLinuxDrive::closeDeviceHandle(OSDEVICEHANDLE osDeviceHandle) {
-  close(handleDescriptor(osDeviceHandle));
+  LOG(D4) << "Entering DtaDevLinuxDrive::closeDeviceHandle";
+  int descriptor = handleDescriptor(osDeviceHandle);
+  LOG(D4) << "DtaDevLinuxDrive::closeDeviceHandle -- calling close(" << descriptor << ")...";
+  close(descriptor);
+  LOG(D4) << "DtaDevLinuxDrive::closeDeviceHandle -- returned from close(" << descriptor << ")";
+  LOG(D4) << "Exiting DtaDevLinuxDrive::closeDeviceHandle";
 }
 
 std::vector<std::string> DtaDevLinuxDrive::enumerateDtaDevLinuxDriveDevRefs(bool & accessDenied)

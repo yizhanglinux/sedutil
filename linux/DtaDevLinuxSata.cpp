@@ -254,7 +254,7 @@ int DtaDevLinuxSata::PerformATAPassThroughCommand(OSDEVICEHANDLE osDeviceHandle,
   // check for successful target completion
   if (masked_status != GOOD)
     {
-      LOG(D4) << "masked_status=" << masked_status << "=" << statusName(masked_status) << " != GOOD  cmd=" <<
+      LOG(D4) << "masked_status=" << (int)masked_status << "=" << statusName(masked_status) << " != GOOD  cmd=" <<
         (cmd == IF_SEND ? std::string("IF_SEND") :
          cmd == IF_RECV ? std::string("IF_RECV") :
          cmd == IDENTIFY ? std::string("IDENTIFY") :

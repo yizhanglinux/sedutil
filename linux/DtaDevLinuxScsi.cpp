@@ -94,37 +94,37 @@ DtaDevLinuxScsi::getDtaDevLinuxScsi(const char * devref, DTA_DEVICE_INFO & di) {
     DtaHexDump((void *)&di, (unsigned int)sizeof(DTA_DEVICE_INFO));
   }
 
-  // TODO: should be just DtaDevLinuxSata
-  dictionary * identifyCharacteristics = NULL;
-  if (DtaDevLinuxSata::identifyUsingATAIdentifyDevice(osDeviceHandle,
-                                                      interfaceDeviceIdentification,
-                                                      di,
-                                                      &identifyCharacteristics)) {
+  // // TODO: should be just DtaDevLinuxSata
+  // dictionary * identifyCharacteristics = NULL;
+  // if (DtaDevLinuxSata::identifyUsingATAIdentifyDevice(osDeviceHandle,
+  //                                                     interfaceDeviceIdentification,
+  //                                                     di,
+  //                                                     &identifyCharacteristics)) {
 
-    // The completed identifyCharacteristics map could be useful to customizing code here
-    if ( NULL != identifyCharacteristics ) {
-      LOG(D3) << "identifyCharacteristics for ATA Device: ";
-      for (dictionary::iterator it=identifyCharacteristics->begin(); it!=identifyCharacteristics->end(); it++)
-        LOG(D3) << "  " << it->first << ":" << it->second << std::endl;
-      delete identifyCharacteristics;
-      identifyCharacteristics = NULL ;
-    }
+  //   // The completed identifyCharacteristics map could be useful to customizing code here
+  //   if ( NULL != identifyCharacteristics ) {
+  //     LOG(D3) << "identifyCharacteristics for ATA Device: ";
+  //     for (dictionary::iterator it=identifyCharacteristics->begin(); it!=identifyCharacteristics->end(); it++)
+  //       LOG(D3) << "  " << it->first << ":" << it->second << std::endl;
+  //     delete identifyCharacteristics;
+  //     identifyCharacteristics = NULL ;
+  //   }
 
-    LOG(D4) << " Device " << devref << " is Sata";
-    di.devType = DEVICE_TYPE_SATA;
-    return new DtaDevLinuxSata(osDeviceHandle);
-  }
+  //   LOG(D4) << " Device " << devref << " is Sata";
+  //   di.devType = DEVICE_TYPE_SATA;
+  //   return new DtaDevLinuxSata(osDeviceHandle);
+  // }
 
-  // Even though the device is SAS,
-  // the (possibly partially completed) identifyCharacteristics map could be useful to customizing code here
-  // The completed identifyCharacteristics map could be useful to customizing code here
-  if ( NULL != identifyCharacteristics ) {
-    LOG(D3) << "identifyCharacteristics for SAS Device: ";
-    for (dictionary::iterator it=identifyCharacteristics->begin(); it!=identifyCharacteristics->end(); it++)
-      LOG(D3) << "  " << it->first << ":" << it->second << std::endl;
-    delete identifyCharacteristics;
-    identifyCharacteristics = NULL ;
-  }
+  // // Even though the device is SAS,
+  // // the (possibly partially completed) identifyCharacteristics map could be useful to customizing code here
+  // // The completed identifyCharacteristics map could be useful to customizing code here
+  // if ( NULL != identifyCharacteristics ) {
+  //   LOG(D3) << "identifyCharacteristics for SAS Device: ";
+  //   for (dictionary::iterator it=identifyCharacteristics->begin(); it!=identifyCharacteristics->end(); it++)
+  //     LOG(D3) << "  " << it->first << ":" << it->second << std::endl;
+  //   delete identifyCharacteristics;
+  //   identifyCharacteristics = NULL ;
+  // }
 
   LOG(D3) << "Device " << devref << " is Scsi (not Sata, assuming plain SAS)" ;
   di.devType = DEVICE_TYPE_SAS;
@@ -275,6 +275,7 @@ int DtaDevLinuxScsi::inquiryStandardDataAll_SCSI(OSDEVICEHANDLE osDeviceHandle, 
 {
   LOG(D4) << "DtaDevLinuxScsi::inquiryStandardDataAll_SCSI: calling __inquiry ...";
   int result = __inquiry( osDeviceHandle, 0x00, 0x00, inquiryResponse, dataSize);
+  if (0!=result) { LOG(E) << "__inquiry(_, 0x00, ...) failed with result " << HEXON(8) << result; }
   LOG(D4) << "DtaDevLinuxScsi::inquiryStandardDataAll_SCSI{ __inquiry returned " << result;
   return result;
 }
@@ -488,6 +489,7 @@ int DtaDevLinuxScsi::__inquiry__EVPD(OSDEVICEHANDLE osDeviceHandle, uint8_t page
 {
   LOG(D4) << "DtaDevLinuxScsi::__inquiry__EVPD: calling __inquiry ...";
   int result = __inquiry(osDeviceHandle, 0x01, page_code, inquiryResponse, dataSize);
+  if (0!=result) { LOG(E) << "__inquiry(_, 0x01, ...) failed with result " << HEXON(8) << result; }
   LOG(D4) << "DtaDevLinuxScsi::__inquiry__EVPD: __inquiry returned " << result;
   return result;
 }
@@ -670,7 +672,7 @@ int DtaDevLinuxScsi::PerformSCSICommand(OSDEVICEHANDLE osDeviceHandle,
 
   IFLOG(D4)
     if (dxfer_direction ==  PSC_TO_DEV) {
-      LOG(D4) << "PerformSCSICommand buffer before";
+      LOG(D4) << " DtaDevLinuxScsi::PerformSCSICommand buffer before";
       DtaHexDump(buffer,bufferlen);
     }
 
@@ -680,20 +682,25 @@ int DtaDevLinuxScsi::PerformSCSICommand(OSDEVICEHANDLE osDeviceHandle,
    */
 
   IFLOG(D4) {
-    LOG(D4) << "PerformSCSICommand sg:" ;
+    LOG(D4) << " DtaDevLinuxScsi::PerformSCSICommand sg:" ;
     DtaHexDump(&sg, sizeof(sg));
-    LOG(D4) << "cdb before:" ;
+    LOG(D4) << "DtaDevLinuxScsi::PerformSCSICommand cdb before:" ;
     DtaHexDump(cdb, cdb_len);
   }
+  LOG(D4) << " DtaDevLinuxScsi::PerformSCSICommand calling ioctl ...";
   int result = ioctl(handleDescriptor(osDeviceHandle), SG_IO, &sg);
-  LOG(D4) << "PerformSCSICommand ioctl result=" << result ;
+  if (0!=result) {
+    LOG(E) << "DtaDevLinuxScsi::PerformSCSICommand:: ioctl(" << handleDescriptor(osDeviceHandle) << ", ...) failed with result " << HEXON(8) << result;
+    LOG(E) << "DtaDevLinuxScsi::PerformSCSICommand:: sg.masked_status=" << (int)sg.masked_status;
+  }
+  LOG(D4) << " DtaDevLinuxScsi::PerformSCSICommand ioctl result=" << result ;
   IFLOG(D4) {
     if (result < 0) {
       LOG(D4)
-        << "cdb after ioctl returned " << result << " (" << strerror(result) << ")" ;
+        << " DtaDevLinuxScsi::PerformSCSICommand cdb after ioctl returned " << result << " (" << strerror(result) << ")" ;
       DtaHexDump(cdb, cdb_len);
       if (sense != NULL) {
-        LOG(D4) << "sense after ";
+        LOG(D4) << "DtaDevLinuxScsi::PerformSCSICommand sense after ";
         DtaHexDump(sense, senselen);
       }
     }
@@ -709,11 +716,11 @@ int DtaDevLinuxScsi::PerformSCSICommand(OSDEVICEHANDLE osDeviceHandle,
     IFLOG(D4) {
       if (*pmasked_status != GOOD) {
         LOG(D4)
-          << "cdb after with masked_status == " << statusName(*pmasked_status)
+          << "DtaDevLinuxScsi::PerformSCSICommand cdb after with masked_status == " << statusName(*pmasked_status)
           << " == " << std::hex << (int)sg.masked_status;
         DtaHexDump(cdb, cdb_len);
         if (sense != NULL) {
-          LOG(D4) << "sense after ";
+          LOG(D4) << "DtaDevLinuxScsi::PerformSCSICommand sense after ";
           DtaHexDump(sense, senselen);
         }
       }
@@ -722,7 +729,7 @@ int DtaDevLinuxScsi::PerformSCSICommand(OSDEVICEHANDLE osDeviceHandle,
 
   IFLOG(D4)
     if (dxfer_direction ==  PSC_FROM_DEV && 0==result && sg.masked_status == GOOD) {
-      LOG(D4) << "PerformSCSICommand buffer after 0==result && sg.masked_status == GOOD:";
+      LOG(D4) << "DtaDevLinuxScsi::PerformSCSICommand buffer after 0==result && sg.masked_status == GOOD:";
       DtaHexDump(buffer, bufferlen);
     }
   return result;

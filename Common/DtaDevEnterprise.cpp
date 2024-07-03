@@ -1992,6 +1992,7 @@ void DtaDevEnterprise::puke()
   DtaDevOS::puke();
   LOG(D1) << "DtaDevEnterprise::puke -- Enterprise-specific section";
   if (disk_info.Properties) {
+
     uint32_t i = 0, j = 0;
 
     cout << std::endl << "TPer Properties: " << std::endl;

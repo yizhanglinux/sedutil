@@ -242,10 +242,12 @@ uint8_t DtaDevOS::diskScan()
   return DTAERROR_SUCCESS;
 }
 
-/** Close the device reference so this object can be delete. */
+/** Delete its drive when this object is deleted. */
 DtaDevOS::~DtaDevOS()
 {
   LOG(D4) << "Destroying DtaDevOS";
-  if (NULL != drive)
+  if (NULL != drive) {
     delete drive;
+    drive = NULL;
+  }
 }

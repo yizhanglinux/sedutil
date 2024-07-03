@@ -3081,14 +3081,12 @@ uint8_t DtaDevOpal::properties()
   set_prop(props, sz_MaxComPacketSize, sz_MaxResponseComPacketSize, sz_MaxPacketSize, sz_MaxIndTokenSize);
 
   //props->complete();
-  if ((lastRC = session->sendCommand(props, propertiesResponse)) != 0) {
-    delete props;
-    return lastRC;
+  if ((lastRC = session->sendCommand(props, propertiesResponse)) == 0) {
+    disk_info.Properties = 1;
   }
-  disk_info.Properties = 1;
   delete props;
   LOG(D1) << "Leaving DtaDevOpal::properties() " << dev;
-  return 0;
+  return lastRC;
 }
 
 // fill  property

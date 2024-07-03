@@ -85,7 +85,11 @@ public:
   virtual uint8_t discovery0(DTA_DEVICE_INFO & di) = 0;
 
 
-  virtual ~DtaDevOSDrive() {closeDrive();}
+  virtual ~DtaDevOSDrive() {
+    LOG(D4) << "Destroying DtaDevOSDrive";
+    closeDrive();
+  }
+
 
   static OSDEVICEHANDLE openDeviceHandle(const char* devref, bool& accessDenied);
 

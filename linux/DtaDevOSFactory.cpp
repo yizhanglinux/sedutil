@@ -250,7 +250,7 @@ DtaDevLinuxDrive * DtaDevLinuxDrive::getDtaDevLinuxDrive(const char * devref,
   case DEVICE_TYPE_NVME:  // NVMe
     // TODO: Just hack by using Scsi for now.  BlockStorageDevice?
     if (deviceNeedsSpecialAction(interfaceDeviceIdentification, acceptPseudoDeviceImmediately)) {
-      trySubclass(/*BlockStorageDevice*/ Scsi);   // TODO: hack
+      trySubclass(/*BlockStorageDevice*/ Scsi);   // TODO: hack  TODO: DtaDevLinuxBlockStorageDevice TODO!!
       break;
     }
     //    trySubclass(Nvme)   // TODO test
